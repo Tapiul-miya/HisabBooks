@@ -1,0 +1,84 @@
+@import "tailwindcss";
+
+@layer base {
+  html, body {
+    overflow-x: hidden;
+    max-width: 100vw;
+  }
+  body {
+    font-family: 'Hind Siliguri', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  }
+}
+
+@keyframes blurFadeIn {
+  0% {
+    opacity: 0.4;
+    filter: blur(8px);
+    transform: translateY(15px) scale(0.97);
+    box-shadow: 0 0 30px rgba(59, 130, 246, 0.5);
+  }
+  50% {
+    opacity: 1;
+    filter: blur(0px);
+    transform: translateY(-3px) scale(1.01);
+    box-shadow: 0 12px 30px -4px rgba(59, 130, 246, 0.35);
+  }
+  100% {
+    opacity: 1;
+    filter: blur(0px);
+    transform: translateY(0) scale(1);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  }
+}
+
+.animate-blur-float {
+  animation: blurFadeIn 1.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Custom scrollbar for transaction lists */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Print optimizations */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  [data-pdf-content="true"],
+  [data-pdf-content="true"] * {
+    visibility: visible;
+  }
+  [data-pdf-content="true"] {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 16px !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+  tr, .bg-\[\#f0fdf4\], .border-b-2 {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+  thead {
+    display: table-header-group;
+  }
+  tbody {
+    display: table-row-group;
+  }
+}

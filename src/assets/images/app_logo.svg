@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="108" height="108">
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0F380F" />
+      <stop offset="50%" stop-color="#1B5E20" />
+      <stop offset="100%" stop-color="#2E7D32" />
+    </linearGradient>
+    <linearGradient id="spineGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#81C784" />
+      <stop offset="100%" stop-color="#A5D6A7" />
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFE082" />
+      <stop offset="100%" stop-color="#FFB300" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <!-- Background Canvas -->
+  <rect width="108" height="108" rx="24" fill="url(#bgGrad)"/>
+
+  <!-- Book Shadow Layer -->
+  <rect x="26" y="22" width="56" height="66" rx="6" fill="#0A270A" opacity="0.6"/>
+
+  <!-- Book Cover Main White Pages -->
+  <rect x="24" y="20" width="56" height="66" rx="6" fill="#FFFFFF" filter="url(#shadow)"/>
+
+  <!-- Leather Spine Accent -->
+  <path d="M24 20 C24 17, 27 20, 30 20 H34 V86 H30 C27 86, 24 89, 24 86 Z" fill="url(#spineGrad)"/>
+  <rect x="34" y="20" width="3" height="66" fill="#1B5E20"/>
+
+  <!-- Ledger Rows / Accounting Lines -->
+  <rect x="42" y="30" width="30" height="3.5" rx="1.5" fill="#1B5E20"/>
+  <rect x="42" y="38" width="24" height="3" rx="1.5" fill="#2E7D32"/>
+  <rect x="42" y="45" width="28" height="3" rx="1.5" fill="#2E7D32"/>
+
+  <!-- Gold Emblem Badge -->
+  <circle cx="58" cy="66" r="12" fill="url(#goldGrad)" filter="url(#shadow)"/>
+
+  <!-- Taka / Plus Accounting Symbol -->
+  <path d="M56 60 H60 V72 H56 Z M52 64 H64 V68 H52 Z" fill="#3E2723"/>
+</svg>

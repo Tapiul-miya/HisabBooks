@@ -1,0 +1,8 @@
+{
+  "appId": "com.hisabbook.app",
+  "appName": "Hisab Book",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}

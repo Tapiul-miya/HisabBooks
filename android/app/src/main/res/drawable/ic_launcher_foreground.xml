@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Outer Shield / Book Shadow -->
+    <path
+        android:fillColor="#0D3B11"
+        android:pathData="M30,28 h48 c3.3,0 6,2.7 6,6 v46 c0,3.3 -2.7,6 -6,6 h-48 c-3.3,0 -6,-2.7 -6,-6 v-46 c0,-3.3 2.7,-6 6,-6 z" />
+
+    <!-- Ledger Book Main Body -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M28,24 h48 c3.3,0 6,2.7 6,6 v46 c0,3.3 -2.7,6 -6,6 h-48 c-3.3,0 -6,-2.7 -6,-6 v-46 c0,-3.3 2.7,-6 6,-6 z" />
+    
+    <!-- Green Leather Spine Accent -->
+    <path
+        android:fillColor="#A5D6A7"
+        android:pathData="M22,30 c0,-3.3 2.7,-6 6,-6 h10 v58 h-10 c-3.3,0 -6,-2.7 -6,-6 z" />
+        
+    <path
+        android:fillColor="#2E7D32"
+        android:pathData="M37,24 h3 v58 h-3 z" />
+
+    <!-- Ledger Rows / Entry Lines -->
+    <path
+        android:fillColor="#1B5E20"
+        android:pathData="M45,33 h28 v4 h-28 z
+                          M45,41 h22 v3 h-22 z
+                          M45,47 h26 v3 h-26 z" />
+
+    <!-- Gold Taka / Accounting Emblem Badge -->
+    <path
+        android:fillColor="#FFC107"
+        android:pathData="M58,55 c-7.2,0 -13,5.8 -13,13 c0,7.2 5.8,13 13,13 c7.2,0 13,-5.8 13,-13 c0,-7.2 -5.8,-13 -13,-13 z" />
+
+    <!-- Taka Symbol (+) / Calculator emblem -->
+    <path
+        android:fillColor="#3E2723"
+        android:pathData="M56,60 h4 v16 h-4 z
+                          M50,66 h16 v4 h-16 z" />
+</vector>

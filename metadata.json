@@ -1,0 +1,6 @@
+{
+  "name": "Hisab Book",
+  "description": "গাড়ি ও অন্যান্য কাজের হিসাব খাতা (Hisab Book) - সহজে হিসাব রাখুন, তৈরি করুন ও রিপোর্ট দেখুন।",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
