@@ -17,7 +17,7 @@ interface GroupSummaryCardProps {
   onCopyClick: (grouped: GroupedHisab) => void;
 }
 
-export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = ({
+export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
   groupedHisab,
   mode,
   expanded,
@@ -179,4 +179,4 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = ({
       )}
     </>
   );
-};
+});

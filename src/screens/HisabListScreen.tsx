@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Plus } from 'lucide-react';
 import { GroupedHisab, GroupByMode, VehicleHisab, getGroupKey } from '../types';
 import { HeaderSummary } from '../components/HeaderSummary';
@@ -6,6 +6,9 @@ import { DashboardSearchBar } from '../components/DashboardSearchBar';
 import { ViewModeFilterRow } from '../components/ViewModeFilterRow';
 import { GroupSummaryCard } from '../components/GroupSummaryCard';
 import { EmptyStateView } from '../components/EmptyStateView';
+
+const INITIAL_BATCH_SIZE = 25;
+const BATCH_INCREMENT = 25;
 
 interface HisabListScreenProps {
   groupedList: GroupedHisab[];
@@ -45,8 +48,27 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
   onShowAbout
 }) => {
   const [showSearch, setShowSearch] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(INITIAL_BATCH_SIZE);
+  const mainScrollRef = useRef<HTMLElement | null>(null);
 
   const isSearchOpen = showSearch || searchQuery.length > 0;
+
+  // Reset pagination when filter or search changes
+  useEffect(() => {
+    setVisibleCount(INITIAL_BATCH_SIZE);
+  }, [searchQuery, selectedGroupByMode]);
+
+  // If a group is highlighted or expanded, ensure it is within visible items
+  useEffect(() => {
+    if (highlightedGroupKey) {
+      const idx = groupedList.findIndex(
+        g => getGroupKey(g, selectedGroupByMode) === highlightedGroupKey
+      );
+      if (idx >= 0 && idx >= visibleCount) {
+        setVisibleCount(idx + 10);
+      }
+    }
+  }, [highlightedGroupKey, groupedList, selectedGroupByMode, visibleCount]);
 
   const handleToggleSearch = () => {
     setShowSearch((prev) => !prev);
@@ -59,10 +81,35 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
     }
   };
 
-  // Overall sums
-  const totalBill = groupedList.reduce((acc, g) => acc + g.totalBill, 0);
-  const totalPaid = groupedList.reduce((acc, g) => acc + g.totalPaid, 0);
-  const totalDue = groupedList.reduce((acc, g) => acc + g.totalDue, 0);
+  // Overall sums across all records (computed in O(N))
+  const { totalBill, totalPaid, totalDue } = useMemo(() => {
+    let bill = 0;
+    let paid = 0;
+    let due = 0;
+    for (let i = 0; i < groupedList.length; i++) {
+      bill += groupedList[i].totalBill || 0;
+      paid += groupedList[i].totalPaid || 0;
+      due += groupedList[i].totalDue || 0;
+    }
+    return { totalBill: bill, totalPaid: paid, totalDue: due };
+  }, [groupedList]);
+
+  // Progressive infinite scroll handler
+  const handleScroll = useCallback((e: React.UIEvent<HTMLElement>) => {
+    const target = e.currentTarget;
+    if (target.scrollHeight - target.scrollTop - target.clientHeight < 300) {
+      setVisibleCount(prev => {
+        if (prev < groupedList.length) {
+          return Math.min(prev + BATCH_INCREMENT, groupedList.length);
+        }
+        return prev;
+      });
+    }
+  }, [groupedList.length]);
+
+  const visibleItems = useMemo(() => {
+    return groupedList.slice(0, visibleCount);
+  }, [groupedList, visibleCount]);
 
   return (
     <div className="h-screen h-[100dvh] bg-[#E1E8EF] flex flex-col max-w-lg mx-auto shadow-xl relative overflow-hidden">
@@ -94,28 +141,45 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
         </div>
       </div>
 
-      {/* Scrollable Data Cards */}
-      <main className="flex-1 overflow-y-auto px-3.5 pt-2 space-y-3.5 pb-24 min-h-0">
+      {/* Scrollable Data Cards with High Performance Progressive Rendering */}
+      <main
+        ref={mainScrollRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto px-3.5 pt-2 space-y-3.5 pb-24 min-h-0"
+      >
         {groupedList.length === 0 ? (
           <EmptyStateView />
         ) : (
-          groupedList.map((groupedItem) => {
-            const groupKey = getGroupKey(groupedItem, selectedGroupByMode);
-            return (
-              <GroupSummaryCard
-                key={groupKey}
-                groupedHisab={groupedItem}
-                mode={selectedGroupByMode}
-                expanded={expandedGroups.has(groupKey)}
-                isHighlighted={groupKey === highlightedGroupKey}
-                highlightedItemId={highlightedItemId}
-                onExpandToggle={() => onToggleGroup(groupKey)}
-                onDeleteHisab={onDeleteHisab}
-                onEditClick={onEditClick}
-                onCopyClick={onCopyClick}
-              />
-            );
-          })
+          <>
+            {visibleItems.map((groupedItem) => {
+              const groupKey = getGroupKey(groupedItem, selectedGroupByMode);
+              return (
+                <GroupSummaryCard
+                  key={groupKey}
+                  groupedHisab={groupedItem}
+                  mode={selectedGroupByMode}
+                  expanded={expandedGroups.has(groupKey)}
+                  isHighlighted={groupKey === highlightedGroupKey}
+                  highlightedItemId={highlightedItemId}
+                  onExpandToggle={() => onToggleGroup(groupKey)}
+                  onDeleteHisab={onDeleteHisab}
+                  onEditClick={onEditClick}
+                  onCopyClick={onCopyClick}
+                />
+              );
+            })}
+
+            {visibleCount < groupedList.length && (
+              <div className="text-center py-3">
+                <button
+                  onClick={() => setVisibleCount(prev => Math.min(prev + BATCH_INCREMENT, groupedList.length))}
+                  className="px-4 py-1.5 text-xs font-semibold text-emerald-800 bg-emerald-100/70 hover:bg-emerald-200/70 active:scale-95 rounded-full transition-all"
+                >
+                  আরো {groupedList.length - visibleCount} টি গ্রুপ লোড করুন
+                </button>
+              </div>
+            )}
+          </>
         )}
       </main>
 

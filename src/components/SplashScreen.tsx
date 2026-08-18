@@ -9,14 +9,14 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinished }) => {
   const [fadeOut, setFadeOut] = useState(false);
 
   useEffect(() => {
-    // Hold splash screen for 2 seconds, then start 400ms fadeout
+    // Quick and snappy splash screen (600ms display + 300ms fadeout)
     const timer1 = setTimeout(() => {
       setFadeOut(true);
-    }, 2000);
+    }, 600);
 
     const timer2 = setTimeout(() => {
       onFinished();
-    }, 2450);
+    }, 900);
 
     return () => {
       clearTimeout(timer1);
@@ -26,7 +26,8 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ onFinished }) => {
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex flex-col items-center justify-between bg-gradient-to-b from-[#0F380F] via-[#1B5E20] to-[#0A270A] text-white p-6 transition-opacity duration-500 ${
+      onClick={onFinished}
+      className={`fixed inset-0 z-50 flex flex-col items-center justify-between bg-gradient-to-b from-[#0F380F] via-[#1B5E20] to-[#0A270A] text-white p-6 cursor-pointer transition-opacity duration-300 ${
         fadeOut ? 'opacity-0 pointer-events-none' : 'opacity-100'
       }`}
     >

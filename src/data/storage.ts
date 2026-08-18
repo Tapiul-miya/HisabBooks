@@ -168,7 +168,7 @@ export class HisabStorage {
   }
 
   /**
-   * Search and Group engine matching DatabaseHelper.kt powered by IndexedDB
+   * High-Performance Single-Pass Search and Group engine powered by IndexedDB
    */
   public static async getAllWithSearchGroupSum(
     query: string = '',
@@ -202,55 +202,63 @@ export class HisabStorage {
 
     if (items.length === 0) return [];
 
-    // Sort newest date first
+    // Sort newest date / id first
     items.sort((a, b) => b.id - a.id);
 
-    // 2. Grouping
-    const groupMap = new Map<string, VehicleHisab[]>();
+    // 2. High-Performance Single-Pass Grouping & Totals Calculation
+    const groupMap = new Map<string, {
+      first: VehicleHisab;
+      items: VehicleHisab[];
+      totalBill: number;
+      totalPaid: number;
+      totalDue: number;
+      totalQty: number;
+    }>();
 
-    items.forEach(item => {
-      let groupKey = '';
-      if (groupByMode === GroupByMode.BY_USER_DETAILS) {
-        groupKey = `${item.name.trim()}_${item.hisabType.trim()}_${item.address.trim()}_${item.mobile.trim()}_${item.workDetails.trim()}`;
+    const isUserDetails = groupByMode === GroupByMode.BY_USER_DETAILS;
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const groupKey = isUserDetails
+        ? `${item.name.trim()}_${item.hisabType.trim()}_${item.address.trim()}_${item.mobile.trim()}_${item.workDetails.trim()}`
+        : `${item.date.trim()}_${item.hisabType.trim()}_${item.workDetails.trim()}`;
+
+      const existing = groupMap.get(groupKey);
+      if (existing) {
+        existing.items.push(item);
+        existing.totalBill += item.bill || 0;
+        existing.totalPaid += item.paid || 0;
+        existing.totalDue += item.due || 0;
+        existing.totalQty += item.qty || 0;
       } else {
-        groupKey = `${item.date.trim()}_${item.hisabType.trim()}_${item.workDetails.trim()}`;
+        groupMap.set(groupKey, {
+          first: item,
+          items: [item],
+          totalBill: item.bill || 0,
+          totalPaid: item.paid || 0,
+          totalDue: item.due || 0,
+          totalQty: item.qty || 0
+        });
       }
+    }
 
-      if (!groupMap.has(groupKey)) {
-        groupMap.set(groupKey, []);
-      }
-      groupMap.get(groupKey)!.push(item);
-    });
-
-    // 3. Aggregate group totals
+    // 3. Build result array in preserved newest-first order
     const result: GroupedHisab[] = [];
-
-    groupMap.forEach((groupItems) => {
-      const first = groupItems[0];
-      const totalBill = groupItems.reduce((sum, item) => sum + (item.bill || 0), 0);
-      const totalPaid = groupItems.reduce((sum, item) => sum + (item.paid || 0), 0);
-      const totalDue = groupItems.reduce((sum, item) => sum + (item.due || 0), 0);
-      const totalQty = groupItems.reduce((sum, item) => sum + (item.qty || 0), 0);
-
+    groupMap.forEach((grp) => {
+      const first = grp.first;
       result.push({
-        name: groupByMode === GroupByMode.BY_USER_DETAILS ? first.name : '',
-        date: groupByMode === GroupByMode.BY_DATE_WORK ? first.date : '',
+        name: isUserDetails ? first.name : '',
+        date: !isUserDetails ? first.date : '',
         hisabType: first.hisabType,
-        address: groupByMode === GroupByMode.BY_USER_DETAILS ? first.address : '',
-        mobile: groupByMode === GroupByMode.BY_USER_DETAILS ? first.mobile : '',
+        address: isUserDetails ? first.address : '',
+        mobile: isUserDetails ? first.mobile : '',
         workDetails: first.workDetails,
-        totalBill,
-        totalPaid,
-        totalDue,
-        totalQty,
-        items: groupItems
+        totalBill: grp.totalBill,
+        totalPaid: grp.totalPaid,
+        totalDue: grp.totalDue,
+        totalQty: grp.totalQty,
+        items: grp.items
       });
-    });
-
-    result.sort((a, b) => {
-      const minA = Math.min(...a.items.map(i => i.id));
-      const minB = Math.min(...b.items.map(i => i.id));
-      return minB - minA;
     });
 
     return result;
