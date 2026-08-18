@@ -171,6 +171,7 @@ export const App: React.FC = () => {
           onExportPdf={() => setShowPdfModal(true)}
           onShowBackup={() => setShowBackupModal(true)}
           onShowAbout={() => setShowAboutModal(true)}
+          onReloadData={refreshData}
         />
       </div>
 

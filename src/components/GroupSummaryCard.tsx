@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Copy, ChevronDown, ChevronUp, Phone, MapPin, FileText } from 'lucide-react';
+import { Copy, ChevronDown, ChevronUp, Phone, MapPin, FileText, Pencil } from 'lucide-react';
 import { GroupedHisab, GroupByMode, VehicleHisab } from '../types';
 import { GroupChildItemRow } from './GroupChildItemRow';
 import { Utils } from '../util/utils';
 import { SingleGroupPdfPreviewModal } from './SingleGroupPdfPreviewModal';
+import { GroupInfoEditModal } from './GroupInfoEditModal';
 
 interface GroupSummaryCardProps {
   groupedHisab: GroupedHisab;
@@ -15,6 +16,7 @@ interface GroupSummaryCardProps {
   onDeleteHisab: (id: number) => void;
   onEditClick: (item: VehicleHisab) => void;
   onCopyClick: (grouped: GroupedHisab) => void;
+  onReloadData?: () => void;
 }
 
 export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
@@ -26,9 +28,11 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
   onExpandToggle,
   onDeleteHisab,
   onEditClick,
-  onCopyClick
+  onCopyClick,
+  onReloadData
 }) => {
   const [showPdfPreview, setShowPdfPreview] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
 
   const isDue = groupedHisab.totalDue > 0;
   const borderColor = isDue ? 'border-[#EF5350]' : 'border-[#66BB6A]';
@@ -120,6 +124,16 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
               >
                 <Copy size={16} />
               </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowEditModal(true);
+                }}
+                className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                title="গ্রুপের তথ্য সম্পাদন করুন"
+              >
+                <Pencil size={16} />
+              </button>
               <div className="text-slate-500 p-1">
                 {expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
               </div>
@@ -194,6 +208,19 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
           group={groupedHisab}
           mode={mode}
           onClose={() => setShowPdfPreview(false)}
+        />
+      )}
+
+      {showEditModal && (
+        <GroupInfoEditModal
+          group={groupedHisab}
+          mode={mode}
+          onClose={() => setShowEditModal(false)}
+          onSuccess={() => {
+            if (onReloadData) {
+              onReloadData();
+            }
+          }}
         />
       )}
     </>

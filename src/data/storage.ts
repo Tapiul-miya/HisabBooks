@@ -294,6 +294,43 @@ export class HisabStorage {
   }
 
   /**
+   * Pure SQL: Update group profile info (name, mobile, address, workDetails) for all items in the group
+   */
+  public static async updateGroupProfile(
+    oldGroup: { name: string; date: string; hisabType: string; address: string; mobile: string; workDetails: string },
+    newGroup: { name: string; mobile: string; address: string; workDetails: string },
+    groupByMode: GroupByMode
+  ): Promise<boolean> {
+    const db = await getSqliteDb();
+    let whereClause = '';
+    const params: string[] = [
+      newGroup.name || '',
+      newGroup.mobile || '',
+      newGroup.address || '',
+      newGroup.workDetails || ''
+    ];
+
+    if (groupByMode === GroupByMode.BY_USER_DETAILS) {
+      whereClause = 'WHERE name = ? AND hisabType = ? AND address = ? AND mobile = ? AND workDetails = ?';
+      params.push(oldGroup.name || '', oldGroup.hisabType || '', oldGroup.address || '', oldGroup.mobile || '', oldGroup.workDetails || '');
+    } else {
+      whereClause = 'WHERE date = ? AND hisabType = ? AND workDetails = ?';
+      params.push(oldGroup.date || '', oldGroup.hisabType || '', oldGroup.workDetails || '');
+    }
+
+    const stmt = db.prepare(`
+      UPDATE hisab
+      SET name = ?, mobile = ?, address = ?, workDetails = ?
+      ${whereClause}
+    `);
+
+    stmt.run(params);
+    stmt.free();
+    await this.persist();
+    return true;
+  }
+
+  /**
    * Pure SQL: DELETE FROM hisab WHERE id = ?
    */
   public static async delete(id: number): Promise<boolean> {

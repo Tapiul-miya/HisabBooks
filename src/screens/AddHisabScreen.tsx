@@ -61,10 +61,10 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
 
   // Freeze condition logic from AddHisabScreen.kt
   const isTypeFrozen = isEditMode || Boolean(initialHisabType);
-  const isWorkDetailsFrozen = Boolean(initialWorkDetails);
-  const isNameFrozen = Boolean(initialName);
-  const isMobileFrozen = Boolean(initialMobile);
-  const isAddressFrozen = Boolean(initialAddress);
+  const isWorkDetailsFrozen = isEditMode || Boolean(initialWorkDetails);
+  const isNameFrozen = isEditMode || Boolean(initialName);
+  const isMobileFrozen = isEditMode || Boolean(initialMobile);
+  const isAddressFrozen = isEditMode || Boolean(initialAddress);
   const isDateFrozen = Boolean(initialDate);
 
   const currentDateStr = new Date().toISOString().split('T')[0];

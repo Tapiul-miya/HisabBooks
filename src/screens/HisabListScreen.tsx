@@ -28,6 +28,7 @@ interface HisabListScreenProps {
   onExportPdf: () => void;
   onShowBackup: () => void;
   onShowAbout: () => void;
+  onReloadData?: () => void;
 }
 
 export const HisabListScreen: React.FC<HisabListScreenProps> = ({
@@ -47,7 +48,8 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
   onDeleteHisab,
   onExportPdf,
   onShowBackup,
-  onShowAbout
+  onShowAbout,
+  onReloadData
 }) => {
   const [showSearch, setShowSearch] = useState(false);
   const [visibleCount, setVisibleCount] = useState(INITIAL_BATCH_SIZE);
@@ -159,6 +161,7 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
                   onDeleteHisab={onDeleteHisab}
                   onEditClick={onEditClick}
                   onCopyClick={onCopyClick}
+                  onReloadData={onReloadData}
                 />
               );
             })}
