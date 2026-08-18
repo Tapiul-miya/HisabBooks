@@ -47,6 +47,19 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
     qtyText = `বছর: ${Utils.formatDaysToYMD(groupedHisab.totalQty)}`;
   }
 
+  const getHisabTypeLabel = (typeKey: string) => {
+    const k = (typeKey || '').toLowerCase();
+    if (k.includes('bigha')) return 'জমির হিসাব (বিঘা)';
+    if (k.includes('trip')) return 'ট্রিপ হিসাব';
+    if (k.includes('hour')) return 'ঘণ্টা হিসাব';
+    if (k.includes('monthly') || k.includes('month')) return 'মাসিক হিসাব';
+    if (k.includes('contract')) return 'চুক্তি হিসাব';
+    if (k.includes('fuel')) return 'ফুয়েল / জ্বালানি';
+    if (k.includes('rent')) return 'ভাড়া';
+    if (k.includes('other')) return 'অন্যান্য';
+    return typeKey || 'সাধারণ';
+  };
+
   const cardTitle =
     mode === GroupByMode.BY_USER_DETAILS && groupedHisab.name.trim()
       ? `👤 ${groupedHisab.name}`
@@ -114,17 +127,23 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
           </div>
 
           <div className="flex items-center justify-between mt-1.5 pt-1.5 border-t border-slate-100 text-xs">
-            <div className="min-w-0 pr-2">
+            <div className="min-w-0 pr-2 space-y-1">
               {groupedHisab.workDetails ? (
-                <span className="bg-[#E3F2FD] text-[#1565C0] text-[11px] font-semibold px-2 py-0.5 rounded truncate inline-block max-w-full">
-                  {groupedHisab.workDetails}
+                <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
+                  <span className="bg-[#E3F2FD] text-[#1565C0] text-[11px] font-semibold px-2 py-0.5 rounded truncate inline-block max-w-full">
+                    {groupedHisab.workDetails}
+                  </span>
+                </div>
+              ) : null}
+              <div className="text-[11px] font-semibold text-slate-600 flex items-center space-x-1">
+                <span>এন্ট্রি সংখ্যা:</span>
+                <span className="bg-blue-100 text-[#0D47A1] px-1.5 py-0.2 rounded font-bold">
+                  {groupedHisab.itemCount || groupedHisab.items.length} টি
                 </span>
-              ) : (
-                <span className="text-slate-400 italic">কাজের বিবরণ নেই</span>
-              )}
+              </div>
             </div>
 
-            <div className="font-medium text-[#2C3E50] shrink-0">
+            <div className="font-medium text-[#2C3E50] shrink-0 text-right">
               {qtyText}
             </div>
           </div>

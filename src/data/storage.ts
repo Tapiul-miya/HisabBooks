@@ -218,12 +218,12 @@ export class HisabStorage {
   }
 
   /**
-   * Pure SQL: SELECT * FROM hisab ORDER BY id DESC;
+   * Pure SQL: SELECT * FROM hisab ORDER BY date ASC, id ASC;
    */
   public static async getAll(): Promise<VehicleHisab[]> {
     const db = await getSqliteDb();
     const result: VehicleHisab[] = [];
-    const stmt = db.prepare('SELECT * FROM hisab ORDER BY id DESC');
+    const stmt = db.prepare('SELECT * FROM hisab ORDER BY date ASC, id ASC');
     while (stmt.step()) {
       result.push(stmt.getAsObject() as unknown as VehicleHisab);
     }
@@ -442,7 +442,7 @@ export class HisabStorage {
       return { groups: [], totals };
     }
 
-    // 3. Pure SQL: GROUP BY Query with SUM Aggregates
+    // 3. Pure SQL: GROUP BY Query with SUM Aggregates & COUNT (Date ASC)
     let groupSql = '';
     if (isUserDetails) {
       groupSql = `
@@ -452,11 +452,13 @@ export class HisabStorage {
           COALESCE(SUM(paid), 0) AS totalPaid,
           COALESCE(SUM(due), 0) AS totalDue,
           COALESCE(SUM(qty), 0) AS totalQty,
-          MAX(id) AS latestId
+          COUNT(id) AS itemCount,
+          MIN(date) AS earliestDate,
+          MIN(id) AS earliestId
         FROM hisab
         ${whereClause}
         GROUP BY name, hisabType, address, mobile, workDetails
-        ORDER BY latestId DESC;
+        ORDER BY earliestDate ASC, earliestId ASC;
       `;
     } else {
       groupSql = `
@@ -466,11 +468,12 @@ export class HisabStorage {
           COALESCE(SUM(paid), 0) AS totalPaid,
           COALESCE(SUM(due), 0) AS totalDue,
           COALESCE(SUM(qty), 0) AS totalQty,
-          MAX(id) AS latestId
+          COUNT(id) AS itemCount,
+          MIN(id) AS earliestId
         FROM hisab
         ${whereClause}
         GROUP BY date, hisabType, workDetails
-        ORDER BY date DESC, latestId DESC;
+        ORDER BY date ASC, earliestId ASC;
       `;
     }
 
@@ -495,6 +498,7 @@ export class HisabStorage {
         totalPaid: Number(row.totalPaid || 0),
         totalDue: Number(row.totalDue || 0),
         totalQty: Number(row.totalQty || 0),
+        itemCount: Number(row.itemCount || 0),
         items: []
       };
 

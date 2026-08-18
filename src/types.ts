@@ -41,6 +41,7 @@ export interface GroupedHisab {
   totalPaid: number;
   totalDue: number;
   totalQty: number;
+  itemCount: number;
   items: VehicleHisab[];
 }
 
