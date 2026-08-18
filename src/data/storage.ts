@@ -1,24 +1,16 @@
-import Dexie, { Table } from 'dexie';
-import { VehicleHisab, GroupByMode, GroupedHisab } from '../types';
+import initSqlJs, { Database, SqlJsStatic } from 'sql.js';
+import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
+import { VehicleHisab, GroupByMode, GroupedHisab, DatabaseTotals, HisabQueryResult } from '../types';
 
-const STORAGE_KEY = 'hisabbook_vehicle_hisab_v1';
+const DB_STORE_NAME = 'sqlite_db_store';
+const DB_FILE_KEY = 'hisabbook.sqlite';
 
-export class HisabDatabase extends Dexie {
-  hisab!: Table<VehicleHisab, number>;
+let SQL: SqlJsStatic | null = null;
+let sqliteDb: Database | null = null;
+let initPromise: Promise<Database> | null = null;
 
-  constructor() {
-    super('HisabBookDatabase');
-    this.version(1).stores({
-      hisab: '++id, name, mobile, address, hisabType, workDetails, date, due'
-    });
-  }
-}
-
-export const db = new HisabDatabase();
-
-const INITIAL_SAMPLE_DATA: VehicleHisab[] = [
+const INITIAL_SAMPLE_DATA: Omit<VehicleHisab, 'id'>[] = [
   {
-    id: 1,
     name: 'আব্দুর রহিম',
     mobile: '01712345678',
     address: 'গাজীপুর চৌরাস্তা',
@@ -38,7 +30,6 @@ const INITIAL_SAMPLE_DATA: VehicleHisab[] = [
     optional: ''
   },
   {
-    id: 2,
     name: 'আব্দুর রহিম',
     mobile: '01712345678',
     address: 'গাজীপুর চৌরাস্তা',
@@ -58,7 +49,6 @@ const INITIAL_SAMPLE_DATA: VehicleHisab[] = [
     optional: ''
   },
   {
-    id: 3,
     name: 'কামাল হোসেন',
     mobile: '01898765432',
     address: 'উত্তরা সেক্টর ৭',
@@ -78,7 +68,6 @@ const INITIAL_SAMPLE_DATA: VehicleHisab[] = [
     optional: ''
   },
   {
-    id: 4,
     name: 'ফারুক আহমেদ',
     mobile: '01911223344',
     address: 'সাভার হেমায়েতপুর',
@@ -99,185 +88,482 @@ const INITIAL_SAMPLE_DATA: VehicleHisab[] = [
   }
 ];
 
-let isSeeded = false;
-
-async function ensureSeeded(): Promise<void> {
-  if (isSeeded) return;
-
-  try {
-    const count = await db.hisab.count();
-    if (count === 0) {
-      // Check if legacy localStorage data exists
-      const legacyData = localStorage.getItem(STORAGE_KEY);
-      if (legacyData) {
-        try {
-          const parsed = JSON.parse(legacyData);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            await db.hisab.bulkAdd(parsed);
-          } else {
-            await db.hisab.bulkAdd(INITIAL_SAMPLE_DATA);
-          }
-        } catch {
-          await db.hisab.bulkAdd(INITIAL_SAMPLE_DATA);
-        }
-      } else {
-        await db.hisab.bulkAdd(INITIAL_SAMPLE_DATA);
-      }
+// Persistent SQLite IndexedDB Storage Driver
+async function getStoredDbBinary(): Promise<Uint8Array | null> {
+  return new Promise((resolve) => {
+    try {
+      const request = indexedDB.open('HisabBookSqliteStorage', 1);
+      request.onupgradeneeded = () => {
+        request.result.createObjectStore(DB_STORE_NAME);
+      };
+      request.onsuccess = () => {
+        const db = request.result;
+        const tx = db.transaction(DB_STORE_NAME, 'readonly');
+        const store = tx.objectStore(DB_STORE_NAME);
+        const getReq = store.get(DB_FILE_KEY);
+        getReq.onsuccess = () => resolve(getReq.result || null);
+        getReq.onerror = () => resolve(null);
+      };
+      request.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
     }
-  } catch (err) {
-    console.error('Dexie seeding error:', err);
-  } finally {
-    isSeeded = true;
-  }
+  });
+}
+
+async function saveDbBinary(data: Uint8Array): Promise<void> {
+  return new Promise((resolve, reject) => {
+    try {
+      const request = indexedDB.open('HisabBookSqliteStorage', 1);
+      request.onupgradeneeded = () => {
+        request.result.createObjectStore(DB_STORE_NAME);
+      };
+      request.onsuccess = () => {
+        const db = request.result;
+        const tx = db.transaction(DB_STORE_NAME, 'readwrite');
+        const store = tx.objectStore(DB_STORE_NAME);
+        store.put(data, DB_FILE_KEY);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      };
+      request.onerror = () => reject(request.error);
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
+async function getSqliteDb(): Promise<Database> {
+  if (sqliteDb) return sqliteDb;
+  if (initPromise) return initPromise;
+
+  initPromise = (async () => {
+    if (!SQL) {
+      SQL = await initSqlJs({
+        locateFile: () => sqlWasmUrl
+      });
+    }
+
+    const savedBinary = await getStoredDbBinary();
+    let db: Database;
+    if (savedBinary && savedBinary.length > 0) {
+      db = new SQL.Database(savedBinary);
+    } else {
+      db = new SQL.Database();
+    }
+
+    // 1. Create SQLite tables and indexes
+    db.run(`
+      CREATE TABLE IF NOT EXISTS hisab (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT DEFAULT '',
+        mobile TEXT DEFAULT '',
+        address TEXT DEFAULT '',
+        hisabType TEXT DEFAULT '',
+        workDetails TEXT DEFAULT '',
+        date TEXT DEFAULT '',
+        stm TEXT DEFAULT '',
+        qty REAL DEFAULT 0,
+        unit TEXT DEFAULT '',
+        rate REAL DEFAULT 0,
+        amount REAL DEFAULT 0,
+        billStm TEXT DEFAULT '',
+        bill REAL DEFAULT 0,
+        paidStm TEXT DEFAULT '',
+        paid REAL DEFAULT 0,
+        due REAL DEFAULT 0,
+        optional TEXT DEFAULT ''
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_hisab_user ON hisab(name, hisabType, address, mobile, workDetails);
+      CREATE INDEX IF NOT EXISTS idx_hisab_date ON hisab(date, hisabType, workDetails);
+      CREATE INDEX IF NOT EXISTS idx_hisab_due ON hisab(due);
+    `);
+
+    // Check count for seeding
+    const res = db.exec('SELECT COUNT(id) AS count FROM hisab');
+    const count = res.length > 0 && res[0].values.length > 0 ? Number(res[0].values[0][0]) : 0;
+    if (count === 0) {
+      const stmt = db.prepare(`
+        INSERT INTO hisab (name, mobile, address, hisabType, workDetails, date, stm, qty, unit, rate, amount, billStm, bill, paidStm, paid, due, optional)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const item of INITIAL_SAMPLE_DATA) {
+        stmt.run([
+          item.name, item.mobile, item.address, item.hisabType, item.workDetails,
+          item.date, item.stm, item.qty, item.unit, item.rate, item.amount,
+          item.billStm, item.bill, item.paidStm, item.paid, item.due, item.optional
+        ]);
+      }
+      stmt.free();
+      await saveDbBinary(db.export());
+    }
+
+    sqliteDb = db;
+    return db;
+  })();
+
+  return initPromise;
 }
 
 export class HisabStorage {
-  public static async getAll(): Promise<VehicleHisab[]> {
-    await ensureSeeded();
-    return await db.hisab.reverse().toArray();
-  }
-
-  public static async getById(id: number): Promise<VehicleHisab | null> {
-    await ensureSeeded();
-    const item = await db.hisab.get(id);
-    return item || null;
-  }
-
-  public static async insert(item: Omit<VehicleHisab, 'id'>): Promise<number> {
-    await ensureSeeded();
-    const newId = await db.hisab.add(item as VehicleHisab);
-    return newId;
-  }
-
-  public static async update(item: VehicleHisab): Promise<boolean> {
-    await ensureSeeded();
-    if (!item.id) return false;
-    const count = await db.hisab.update(item.id, item);
-    return count > 0;
-  }
-
-  public static async delete(id: number): Promise<boolean> {
-    await ensureSeeded();
-    await db.hisab.delete(id);
-    return true;
-  }
-
-  public static async clearAll(): Promise<void> {
-    await ensureSeeded();
-    await db.hisab.clear();
+  /**
+   * Persist SQLite database state to storage
+   */
+  private static async persist(): Promise<void> {
+    if (sqliteDb) {
+      const binary = sqliteDb.export();
+      await saveDbBinary(binary);
+    }
   }
 
   /**
-   * High-Performance Single-Pass Search and Group engine powered by IndexedDB
+   * Pure SQL: SELECT * FROM hisab ORDER BY id DESC;
+   */
+  public static async getAll(): Promise<VehicleHisab[]> {
+    const db = await getSqliteDb();
+    const result: VehicleHisab[] = [];
+    const stmt = db.prepare('SELECT * FROM hisab ORDER BY id DESC');
+    while (stmt.step()) {
+      result.push(stmt.getAsObject() as unknown as VehicleHisab);
+    }
+    stmt.free();
+    return result;
+  }
+
+  /**
+   * Pure SQL: SELECT * FROM hisab WHERE id = ?;
+   */
+  public static async getById(id: number): Promise<VehicleHisab | null> {
+    const db = await getSqliteDb();
+    const stmt = db.prepare('SELECT * FROM hisab WHERE id = ?');
+    stmt.bind([id]);
+    if (stmt.step()) {
+      const obj = stmt.getAsObject() as unknown as VehicleHisab;
+      stmt.free();
+      return obj;
+    }
+    stmt.free();
+    return null;
+  }
+
+  /**
+   * Pure SQL: INSERT INTO hisab (...) VALUES (...)
+   */
+  public static async insert(item: Omit<VehicleHisab, 'id'>): Promise<number> {
+    const db = await getSqliteDb();
+    const stmt = db.prepare(`
+      INSERT INTO hisab (name, mobile, address, hisabType, workDetails, date, stm, qty, unit, rate, amount, billStm, bill, paidStm, paid, due, optional)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run([
+      item.name || '', item.mobile || '', item.address || '', item.hisabType || '', item.workDetails || '',
+      item.date || '', item.stm || '', item.qty || 0, item.unit || '', item.rate || 0, item.amount || 0,
+      item.billStm || '', item.bill || 0, item.paidStm || '', item.paid || 0, item.due || 0, item.optional || ''
+    ]);
+    stmt.free();
+
+    const res = db.exec('SELECT last_insert_rowid() AS id');
+    const newId = Number(res[0].values[0][0]);
+    await this.persist();
+    return newId;
+  }
+
+  /**
+   * Pure SQL: UPDATE hisab SET ... WHERE id = ?
+   */
+  public static async update(item: VehicleHisab): Promise<boolean> {
+    if (!item.id) return false;
+    const db = await getSqliteDb();
+    const stmt = db.prepare(`
+      UPDATE hisab
+      SET name = ?, mobile = ?, address = ?, hisabType = ?, workDetails = ?,
+          date = ?, stm = ?, qty = ?, unit = ?, rate = ?, amount = ?,
+          billStm = ?, bill = ?, paidStm = ?, paid = ?, due = ?, optional = ?
+      WHERE id = ?
+    `);
+    stmt.run([
+      item.name || '', item.mobile || '', item.address || '', item.hisabType || '', item.workDetails || '',
+      item.date || '', item.stm || '', item.qty || 0, item.unit || '', item.rate || 0, item.amount || 0,
+      item.billStm || '', item.bill || 0, item.paidStm || '', item.paid || 0, item.due || 0, item.optional || '',
+      item.id
+    ]);
+    stmt.free();
+    await this.persist();
+    return true;
+  }
+
+  /**
+   * Pure SQL: DELETE FROM hisab WHERE id = ?
+   */
+  public static async delete(id: number): Promise<boolean> {
+    const db = await getSqliteDb();
+    const stmt = db.prepare('DELETE FROM hisab WHERE id = ?');
+    stmt.run([id]);
+    stmt.free();
+    await this.persist();
+    return true;
+  }
+
+  /**
+   * Pure SQL: DELETE FROM hisab;
+   */
+  public static async clearAll(): Promise<void> {
+    const db = await getSqliteDb();
+    db.run('DELETE FROM hisab');
+    await this.persist();
+  }
+
+  /**
+   * Pure SQL Aggregate Query:
+   * SELECT SUM(bill) AS totalBill, SUM(paid) AS totalPaid, SUM(due) AS totalDue, SUM(qty) AS totalQty, COUNT(id) AS totalCount FROM hisab WHERE ...
+   */
+  public static async getDatabaseTotals(
+    query: string = '',
+    searchColumn: string | null = null
+  ): Promise<DatabaseTotals> {
+    const db = await getSqliteDb();
+    const trimmed = query.trim();
+
+    let sql = `
+      SELECT 
+        COALESCE(SUM(bill), 0) AS totalBill,
+        COALESCE(SUM(paid), 0) AS totalPaid,
+        COALESCE(SUM(due), 0) AS totalDue,
+        COALESCE(SUM(qty), 0) AS totalQty,
+        COUNT(id) AS totalCount
+      FROM hisab
+    `;
+
+    const params: (string | number)[] = [];
+    if (trimmed.length > 0) {
+      if (searchColumn) {
+        sql += ` WHERE ${searchColumn} LIKE ?`;
+        params.push(`%${trimmed}%`);
+      } else {
+        sql += ` WHERE (name LIKE ? OR mobile LIKE ? OR address LIKE ? OR hisabType LIKE ? OR workDetails LIKE ? OR date LIKE ?)`;
+        const p = `%${trimmed}%`;
+        params.push(p, p, p, p, p, p);
+      }
+    }
+
+    const stmt = db.prepare(sql);
+    if (params.length > 0) {
+      stmt.bind(params);
+    }
+
+    let totals: DatabaseTotals = {
+      totalBill: 0,
+      totalPaid: 0,
+      totalDue: 0,
+      totalQty: 0,
+      totalCount: 0
+    };
+
+    if (stmt.step()) {
+      const row = stmt.getAsObject() as Record<string, number>;
+      totals = {
+        totalBill: Number(row.totalBill || 0),
+        totalPaid: Number(row.totalPaid || 0),
+        totalDue: Number(row.totalDue || 0),
+        totalQty: Number(row.totalQty || 0),
+        totalCount: Number(row.totalCount || 0)
+      };
+    }
+    stmt.free();
+    return totals;
+  }
+
+  /**
+   * Pure SQL GROUP BY Query with SUM and child sorting:
+   * Uses SQLite GROUP BY engine with SUM aggregates.
+   */
+  public static async getQueryResult(
+    query: string = '',
+    searchColumn: string | null = null,
+    groupByMode: GroupByMode = GroupByMode.BY_USER_DETAILS
+  ): Promise<HisabQueryResult> {
+    const db = await getSqliteDb();
+    const trimmed = query.trim();
+    const isUserDetails = groupByMode === GroupByMode.BY_USER_DETAILS;
+
+    // 1. Where clause for search
+    let whereClause = '';
+    const params: (string | number)[] = [];
+    if (trimmed.length > 0) {
+      if (searchColumn) {
+        whereClause = ` WHERE ${searchColumn} LIKE ?`;
+        params.push(`%${trimmed}%`);
+      } else {
+        whereClause = ` WHERE (name LIKE ? OR mobile LIKE ? OR address LIKE ? OR hisabType LIKE ? OR workDetails LIKE ? OR date LIKE ?)`;
+        const p = `%${trimmed}%`;
+        params.push(p, p, p, p, p, p);
+      }
+    }
+
+    // 2. Pure SQL: Overall Sums Query
+    const totalsSql = `
+      SELECT 
+        COALESCE(SUM(bill), 0) AS totalBill,
+        COALESCE(SUM(paid), 0) AS totalPaid,
+        COALESCE(SUM(due), 0) AS totalDue,
+        COALESCE(SUM(qty), 0) AS totalQty,
+        COUNT(id) AS totalCount
+      FROM hisab
+      ${whereClause}
+    `;
+
+    const totalsStmt = db.prepare(totalsSql);
+    if (params.length > 0) {
+      totalsStmt.bind(params);
+    }
+
+    let totals: DatabaseTotals = {
+      totalBill: 0,
+      totalPaid: 0,
+      totalDue: 0,
+      totalQty: 0,
+      totalCount: 0
+    };
+
+    if (totalsStmt.step()) {
+      const row = totalsStmt.getAsObject() as Record<string, number>;
+      totals = {
+        totalBill: Number(row.totalBill || 0),
+        totalPaid: Number(row.totalPaid || 0),
+        totalDue: Number(row.totalDue || 0),
+        totalQty: Number(row.totalQty || 0),
+        totalCount: Number(row.totalCount || 0)
+      };
+    }
+    totalsStmt.free();
+
+    if (totals.totalCount === 0) {
+      return { groups: [], totals };
+    }
+
+    // 3. Pure SQL: GROUP BY Query with SUM Aggregates
+    let groupSql = '';
+    if (isUserDetails) {
+      groupSql = `
+        SELECT 
+          name, hisabType, address, mobile, workDetails,
+          COALESCE(SUM(bill), 0) AS totalBill,
+          COALESCE(SUM(paid), 0) AS totalPaid,
+          COALESCE(SUM(due), 0) AS totalDue,
+          COALESCE(SUM(qty), 0) AS totalQty,
+          MAX(id) AS latestId
+        FROM hisab
+        ${whereClause}
+        GROUP BY name, hisabType, address, mobile, workDetails
+        ORDER BY latestId DESC;
+      `;
+    } else {
+      groupSql = `
+        SELECT 
+          date, hisabType, workDetails,
+          COALESCE(SUM(bill), 0) AS totalBill,
+          COALESCE(SUM(paid), 0) AS totalPaid,
+          COALESCE(SUM(due), 0) AS totalDue,
+          COALESCE(SUM(qty), 0) AS totalQty,
+          MAX(id) AS latestId
+        FROM hisab
+        ${whereClause}
+        GROUP BY date, hisabType, workDetails
+        ORDER BY date DESC, latestId DESC;
+      `;
+    }
+
+    const groupStmt = db.prepare(groupSql);
+    if (params.length > 0) {
+      groupStmt.bind(params);
+    }
+
+    const groups: GroupedHisab[] = [];
+    const groupKeyMap = new Map<string, GroupedHisab>();
+
+    while (groupStmt.step()) {
+      const row = groupStmt.getAsObject() as Record<string, unknown>;
+      const groupedItem: GroupedHisab = {
+        name: isUserDetails ? String(row.name || '') : '',
+        date: !isUserDetails ? String(row.date || '') : '',
+        hisabType: String(row.hisabType || ''),
+        address: isUserDetails ? String(row.address || '') : '',
+        mobile: isUserDetails ? String(row.mobile || '') : '',
+        workDetails: String(row.workDetails || ''),
+        totalBill: Number(row.totalBill || 0),
+        totalPaid: Number(row.totalPaid || 0),
+        totalDue: Number(row.totalDue || 0),
+        totalQty: Number(row.totalQty || 0),
+        items: []
+      };
+
+      const key = isUserDetails
+        ? `${groupedItem.name.trim()}_${groupedItem.hisabType.trim()}_${groupedItem.address.trim()}_${groupedItem.mobile.trim()}_${groupedItem.workDetails.trim()}`
+        : `${groupedItem.date.trim()}_${groupedItem.hisabType.trim()}_${groupedItem.workDetails.trim()}`;
+
+      groups.push(groupedItem);
+      groupKeyMap.set(key, groupedItem);
+    }
+    groupStmt.free();
+
+    // 4. Pure SQL: Fetch Child Records (Sorted Date ASC, id ASC)
+    const childSql = `
+      SELECT * FROM hisab
+      ${whereClause}
+      ORDER BY date ASC, id ASC;
+    `;
+
+    const childStmt = db.prepare(childSql);
+    if (params.length > 0) {
+      childStmt.bind(params);
+    }
+
+    while (childStmt.step()) {
+      const item = childStmt.getAsObject() as unknown as VehicleHisab;
+      const key = isUserDetails
+        ? `${(item.name || '').trim()}_${(item.hisabType || '').trim()}_${(item.address || '').trim()}_${(item.mobile || '').trim()}_${(item.workDetails || '').trim()}`
+        : `${(item.date || '').trim()}_${(item.hisabType || '').trim()}_${(item.workDetails || '').trim()}`;
+
+      const grp = groupKeyMap.get(key);
+      if (grp) {
+        grp.items.push(item);
+      }
+    }
+    childStmt.free();
+
+    return { groups, totals };
+  }
+
+  /**
+   * Wrapper for backward compatibility
    */
   public static async getAllWithSearchGroupSum(
     query: string = '',
     searchColumn: string | null = null,
     groupByMode: GroupByMode = GroupByMode.BY_USER_DETAILS
   ): Promise<GroupedHisab[]> {
-    await ensureSeeded();
-
-    const trimmed = query.trim().toLowerCase();
-    let items: VehicleHisab[];
-
-    // 1. IndexedDB Query Filtering
-    if (trimmed.length > 0) {
-      items = await db.hisab.filter(i => {
-        if (searchColumn && searchColumn in i) {
-          const val = String((i as unknown as Record<string, unknown>)[searchColumn] || '').toLowerCase();
-          return val.includes(trimmed);
-        }
-        return (
-          i.name.toLowerCase().includes(trimmed) ||
-          i.mobile.toLowerCase().includes(trimmed) ||
-          i.address.toLowerCase().includes(trimmed) ||
-          i.hisabType.toLowerCase().includes(trimmed) ||
-          i.workDetails.toLowerCase().includes(trimmed) ||
-          i.date.toLowerCase().includes(trimmed)
-        );
-      }).toArray();
-    } else {
-      items = await db.hisab.toArray();
-    }
-
-    if (items.length === 0) return [];
-
-    // Sort newest date / id first
-    items.sort((a, b) => b.id - a.id);
-
-    // 2. High-Performance Single-Pass Grouping & Totals Calculation
-    const groupMap = new Map<string, {
-      first: VehicleHisab;
-      items: VehicleHisab[];
-      totalBill: number;
-      totalPaid: number;
-      totalDue: number;
-      totalQty: number;
-    }>();
-
-    const isUserDetails = groupByMode === GroupByMode.BY_USER_DETAILS;
-
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
-      const groupKey = isUserDetails
-        ? `${item.name.trim()}_${item.hisabType.trim()}_${item.address.trim()}_${item.mobile.trim()}_${item.workDetails.trim()}`
-        : `${item.date.trim()}_${item.hisabType.trim()}_${item.workDetails.trim()}`;
-
-      const existing = groupMap.get(groupKey);
-      if (existing) {
-        existing.items.push(item);
-        existing.totalBill += item.bill || 0;
-        existing.totalPaid += item.paid || 0;
-        existing.totalDue += item.due || 0;
-        existing.totalQty += item.qty || 0;
-      } else {
-        groupMap.set(groupKey, {
-          first: item,
-          items: [item],
-          totalBill: item.bill || 0,
-          totalPaid: item.paid || 0,
-          totalDue: item.due || 0,
-          totalQty: item.qty || 0
-        });
-      }
-    }
-
-    // 3. Build result array in preserved newest-first order
-    const result: GroupedHisab[] = [];
-    groupMap.forEach((grp) => {
-      const first = grp.first;
-      result.push({
-        name: isUserDetails ? first.name : '',
-        date: !isUserDetails ? first.date : '',
-        hisabType: first.hisabType,
-        address: isUserDetails ? first.address : '',
-        mobile: isUserDetails ? first.mobile : '',
-        workDetails: first.workDetails,
-        totalBill: grp.totalBill,
-        totalPaid: grp.totalPaid,
-        totalDue: grp.totalDue,
-        totalQty: grp.totalQty,
-        items: grp.items
-      });
-    });
-
-    return result;
+    const res = await this.getQueryResult(query, searchColumn, groupByMode);
+    return res.groups;
   }
 
   /**
-   * Get total count of stored records
+   * Pure SQL: SELECT COUNT(id) AS count FROM hisab;
    */
   public static async getCount(): Promise<number> {
-    await ensureSeeded();
-    return await db.hisab.count();
+    const db = await getSqliteDb();
+    const res = db.exec('SELECT COUNT(id) AS count FROM hisab');
+    if (res.length > 0 && res[0].values.length > 0) {
+      return Number(res[0].values[0][0]);
+    }
+    return 0;
   }
 
   /**
    * Export all data as JSON string
    */
   public static async exportJSON(): Promise<string> {
-    await ensureSeeded();
-    const items = await db.hisab.toArray();
+    const items = await this.getAll();
     return JSON.stringify(items, null, 2);
   }
 
@@ -285,8 +571,7 @@ export class HisabStorage {
    * Export all data as CSV string (with UTF-8 BOM for Bengali support in Excel)
    */
   public static async exportCSV(): Promise<string> {
-    await ensureSeeded();
-    const items = await db.hisab.toArray();
+    const items = await this.getAll();
     const headers = [
       'id', 'name', 'mobile', 'address', 'hisabType', 'workDetails',
       'date', 'stm', 'qty', 'unit', 'rate', 'amount',
@@ -310,11 +595,10 @@ export class HisabStorage {
   }
 
   /**
-   * Export all data as SQL INSERT statements
+   * Export all data as pure SQL INSERT statements
    */
   public static async exportSQL(): Promise<string> {
-    await ensureSeeded();
-    const items = await db.hisab.toArray();
+    const items = await this.getAll();
 
     const escapeSql = (val: unknown) => {
       if (val === null || val === undefined) return 'NULL';
@@ -324,26 +608,26 @@ export class HisabStorage {
     };
 
     const today = new Date().toISOString().replace('T', ' ').split('.')[0];
-    let sql = `-- HisabBook Database SQL Backup\n`;
+    let sql = `-- HisabBook SQLite Database Backup\n`;
     sql += `-- Exported Date: ${today}\n\n`;
     sql += `CREATE TABLE IF NOT EXISTS \`hisab\` (\n`;
-    sql += `  \`id\` INT AUTO_INCREMENT PRIMARY KEY,\n`;
-    sql += `  \`name\` VARCHAR(255),\n`;
-    sql += `  \`mobile\` VARCHAR(255),\n`;
-    sql += `  \`address\` VARCHAR(255),\n`;
-    sql += `  \`hisabType\` VARCHAR(255),\n`;
+    sql += `  \`id\` INTEGER PRIMARY KEY AUTOINCREMENT,\n`;
+    sql += `  \`name\` TEXT,\n`;
+    sql += `  \`mobile\` TEXT,\n`;
+    sql += `  \`address\` TEXT,\n`;
+    sql += `  \`hisabType\` TEXT,\n`;
     sql += `  \`workDetails\` TEXT,\n`;
-    sql += `  \`date\` VARCHAR(255),\n`;
+    sql += `  \`date\` TEXT,\n`;
     sql += `  \`stm\` TEXT,\n`;
-    sql += `  \`qty\` DOUBLE,\n`;
-    sql += `  \`unit\` VARCHAR(255),\n`;
-    sql += `  \`rate\` DOUBLE,\n`;
-    sql += `  \`amount\` DOUBLE,\n`;
+    sql += `  \`qty\` REAL,\n`;
+    sql += `  \`unit\` TEXT,\n`;
+    sql += `  \`rate\` REAL,\n`;
+    sql += `  \`amount\` REAL,\n`;
     sql += `  \`billStm\` TEXT,\n`;
-    sql += `  \`bill\` DOUBLE,\n`;
+    sql += `  \`bill\` REAL,\n`;
     sql += `  \`paidStm\` TEXT,\n`;
-    sql += `  \`paid\` DOUBLE,\n`;
-    sql += `  \`due\` DOUBLE,\n`;
+    sql += `  \`paid\` REAL,\n`;
+    sql += `  \`due\` REAL,\n`;
     sql += `  \`optional\` TEXT\n`;
     sql += `);\n\n`;
 
@@ -359,160 +643,47 @@ export class HisabStorage {
   }
 
   /**
-   * Import data from SQL text file
+   * Import data from SQL text file directly into SQLite Engine
    */
   public static async importSQL(sqlText: string, mode: 'append' | 'replace'): Promise<{ count: number }> {
-    await ensureSeeded();
+    const db = await getSqliteDb();
     const cleanText = sqlText.replace(/^\uFEFF/, '').trim();
 
-    const parseSqlValues = (text: string): Omit<VehicleHisab, 'id'>[] => {
-      const items: Omit<VehicleHisab, 'id'>[] = [];
+    if (mode === 'replace') {
+      db.run('DELETE FROM hisab');
+    }
 
+    const countBefore = await this.getCount();
+
+    try {
+      // Try direct SQLite execution first
+      db.run(cleanText);
+    } catch {
+      // Fallback: robust multi-table regex parser
       const insertRegex = /INSERT\s+INTO\s+[`"'\w]+\s*(?:\(([^)]+)\))?\s*VALUES\s*([\s\S]+?);/gi;
       let match;
 
-      while ((match = insertRegex.exec(text)) !== null) {
-        const colListStr = match[1];
-        const valuesStr = match[2];
-
-        let columns: string[] = [];
-        if (colListStr) {
-          columns = colListStr.split(',').map(c => c.trim().replace(/[`"']/g, '').toLowerCase());
-        }
-
-        let inQuotes = false;
-        let quoteChar = '';
-        let currentTuple: string[] = [];
-        let currentVal = '';
-        let depth = 0;
-
-        for (let i = 0; i < valuesStr.length; i++) {
-          const char = valuesStr[i];
-          const nextChar = valuesStr[i + 1];
-
-          if (inQuotes) {
-            if (char === quoteChar) {
-              if (nextChar === quoteChar || nextChar === '\\') {
-                currentVal += char;
-                i++;
-              } else {
-                inQuotes = false;
-              }
-            } else if (char === '\\' && nextChar) {
-              currentVal += nextChar;
-              i++;
-            } else {
-              currentVal += char;
-            }
-          } else {
-            if (char === "'" || char === '"') {
-              inQuotes = true;
-              quoteChar = char;
-            } else if (char === '(') {
-              if (depth === 0) {
-                currentTuple = [];
-                currentVal = '';
-              }
-              depth++;
-            } else if (char === ')') {
-              depth--;
-              if (depth === 0) {
-                currentTuple.push(currentVal.trim());
-                currentVal = '';
-                
-                if (currentTuple.length > 0) {
-                  const getColValByNames = (names: string[], defaultVal = '') => {
-                    if (columns.length > 0) {
-                      for (const n of names) {
-                        const idx = columns.indexOf(n.toLowerCase());
-                        if (idx !== -1 && currentTuple[idx] !== undefined) {
-                          const raw = currentTuple[idx];
-                          if (raw.toUpperCase() === 'NULL') return defaultVal;
-                          return raw;
-                        }
-                      }
-                    }
-                    return defaultVal;
-                  };
-
-                  let itemObj: Omit<VehicleHisab, 'id'>;
-                  if (columns.length > 0) {
-                    itemObj = {
-                      name: getColValByNames(['name', 'নাম']),
-                      mobile: getColValByNames(['mobile', 'মোবাইল', 'ফোন']),
-                      address: getColValByNames(['address', 'ঠিকানা']),
-                      hisabType: getColValByNames(['hisabtype', 'hisab_type', 'হিসাবের ধরন', 'ধরন']),
-                      workDetails: getColValByNames(['workdetails', 'work_details', 'কাজের বিবরণ', 'বিবরণ']),
-                      date: getColValByNames(['date', 'তারিখ']),
-                      stm: getColValByNames(['stm', 'বিবরণী']),
-                      qty: Number(getColValByNames(['qty', 'পরিমাণ'], '0')) || 0,
-                      unit: getColValByNames(['unit', 'একক']),
-                      rate: Number(getColValByNames(['rate', 'দর'], '0')) || 0,
-                      amount: Number(getColValByNames(['amount', 'মোট'], '0')) || 0,
-                      billStm: getColValByNames(['billstm', 'bill_stm', 'বিলের বিবরণ']),
-                      bill: Number(getColValByNames(['bill', 'বিল'], '0')) || 0,
-                      paidStm: getColValByNames(['paidstm', 'paid_stm', 'জমার বিবরণ']),
-                      paid: Number(getColValByNames(['paid', 'জমা', 'পরিশোধ'], '0')) || 0,
-                      due: Number(getColValByNames(['due', 'বকেয়া'], '0')) || 0,
-                      optional: getColValByNames(['optional', 'অন্যান্য'])
-                    };
-                  } else {
-                    const offset = currentTuple.length === 18 ? 1 : 0;
-                    itemObj = {
-                      name: currentTuple[offset] || '',
-                      mobile: currentTuple[offset + 1] || '',
-                      address: currentTuple[offset + 2] || '',
-                      hisabType: currentTuple[offset + 3] || '',
-                      workDetails: currentTuple[offset + 4] || '',
-                      date: currentTuple[offset + 5] || '',
-                      stm: currentTuple[offset + 6] || '',
-                      qty: Number(currentTuple[offset + 7] || 0) || 0,
-                      unit: currentTuple[offset + 8] || '',
-                      rate: Number(currentTuple[offset + 9] || 0) || 0,
-                      amount: Number(currentTuple[offset + 10] || 0) || 0,
-                      billStm: currentTuple[offset + 11] || '',
-                      bill: Number(currentTuple[offset + 12] || 0) || 0,
-                      paidStm: currentTuple[offset + 13] || '',
-                      paid: Number(currentTuple[offset + 14] || 0) || 0,
-                      due: Number(currentTuple[offset + 15] || 0) || 0,
-                      optional: currentTuple[offset + 16] || ''
-                    };
-                  }
-                  items.push(itemObj);
-                }
-              }
-            } else if (char === ',' && depth === 1) {
-              currentTuple.push(currentVal.trim());
-              currentVal = '';
-            } else {
-              currentVal += char;
-            }
-          }
+      while ((match = insertRegex.exec(cleanText)) !== null) {
+        try {
+          db.run(match[0]);
+        } catch (e) {
+          console.warn('Skipped problematic SQL row:', e);
         }
       }
-
-      return items;
-    };
-
-    const parsedItems = parseSqlValues(cleanText);
-
-    if (parsedItems.length === 0) {
-      throw new Error('SQL ফাইল থেকে কোনো বৈধ ডাটা সারি পাওয়া যায়নি');
     }
 
-    if (mode === 'replace') {
-      await db.hisab.clear();
-    }
+    const countAfter = await this.getCount();
+    await this.persist();
 
-    await db.hisab.bulkAdd(parsedItems as VehicleHisab[]);
-    return { count: parsedItems.length };
+    const importedCount = mode === 'replace' ? countAfter : (countAfter - countBefore);
+    return { count: Math.max(importedCount, 0) };
   }
 
   /**
    * Import data from JSON
    */
   public static async importJSON(jsonText: string, mode: 'append' | 'replace'): Promise<{ count: number }> {
-    await ensureSeeded();
+    const db = await getSqliteDb();
     const cleanText = jsonText.replace(/^\uFEFF/, '').trim();
     let parsed: unknown;
     try {
@@ -539,140 +710,133 @@ export class HisabStorage {
       throw new Error('JSON ফাইলে কোনো ডাটা তালিকা পাওয়া যায়নি');
     }
 
-    const cleanedItems: Omit<VehicleHisab, 'id'>[] = itemList.map((item: Record<string, unknown>) => ({
-      name: String(item.name || item['নাম'] || item.Name || ''),
-      mobile: String(item.mobile || item['মোবাইল'] || item['ফোন'] || item.Mobile || ''),
-      address: String(item.address || item['ঠিকানা'] || item.Address || ''),
-      hisabType: String(item.hisabType || item.hisab_type || item['হিসাবের ধরন'] || item['ধরন'] || item.HisabType || ''),
-      workDetails: String(item.workDetails || item.work_details || item['কাজের বিবরণ'] || item['বিবরণ'] || item.WorkDetails || ''),
-      date: String(item.date || item['তারিখ'] || item.Date || ''),
-      stm: String(item.stm || item['বিবরণী'] || item.Stm || ''),
-      qty: Number(item.qty || item['পরিমাণ'] || item.Qty || 0),
-      unit: String(item.unit || item['একক'] || item.Unit || ''),
-      rate: Number(item.rate || item['দর'] || item.Rate || 0),
-      amount: Number(item.amount || item['মোট'] || item.Amount || 0),
-      billStm: String(item.billStm || item.bill_stm || item['বিলের বিবরণ'] || item.BillStm || ''),
-      bill: Number(item.bill || item['বিল'] || item.Bill || 0),
-      paidStm: String(item.paidStm || item.paid_stm || item['জমার বিবরণ'] || item.PaidStm || ''),
-      paid: Number(item.paid || item['জমা'] || item['পরিশোধ'] || item.Paid || 0),
-      due: Number(item.due || item['বকেয়া'] || item.Due || 0),
-      optional: String(item.optional || item['অন্যান্য'] || item.Optional || '')
-    }));
-
-    if (cleanedItems.length === 0) {
-      throw new Error('আমদানি করার মত কোনো ডাটা পাওয়া যায়নি');
-    }
-
     if (mode === 'replace') {
-      await db.hisab.clear();
+      db.run('DELETE FROM hisab');
     }
 
-    await db.hisab.bulkAdd(cleanedItems as VehicleHisab[]);
-    return { count: cleanedItems.length };
+    const stmt = db.prepare(`
+      INSERT INTO hisab (name, mobile, address, hisabType, workDetails, date, stm, qty, unit, rate, amount, billStm, bill, paidStm, paid, due, optional)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    let count = 0;
+    for (const item of itemList) {
+      stmt.run([
+        String(item.name || item['নাম'] || item.Name || ''),
+        String(item.mobile || item['মোবাইল'] || item['ফোন'] || item.Mobile || ''),
+        String(item.address || item['ঠিকানা'] || item.Address || ''),
+        String(item.hisabType || item.hisab_type || item['হিসাবের ধরন'] || item['ধরন'] || item.HisabType || ''),
+        String(item.workDetails || item.work_details || item['কাজের বিবরণ'] || item['বিবরণ'] || item.WorkDetails || ''),
+        String(item.date || item['তারিখ'] || item.Date || ''),
+        String(item.stm || item['বিবরণী'] || item.Stm || ''),
+        Number(item.qty || item['পরিমাণ'] || item.Qty || 0),
+        String(item.unit || item['একক'] || item.Unit || ''),
+        Number(item.rate || item['দর'] || item.Rate || 0),
+        Number(item.amount || item['মোট'] || item.Amount || 0),
+        String(item.billStm || item.bill_stm || item['বিলের বিবরণ'] || item.BillStm || ''),
+        Number(item.bill || item['বিল'] || item.Bill || 0),
+        String(item.paidStm || item.paid_stm || item['জমার বিবরণ'] || item.PaidStm || ''),
+        Number(item.paid || item['জমা'] || item['পরিশোধ'] || item.Paid || 0),
+        Number(item.due || item['বকেয়া'] || item.Due || 0),
+        String(item.optional || item['অন্যান্য'] || item.Optional || '')
+      ]);
+      count++;
+    }
+    stmt.free();
+    await this.persist();
+    return { count };
   }
 
   /**
    * Import data from CSV
    */
   public static async importCSV(csvText: string, mode: 'append' | 'replace'): Promise<{ count: number }> {
-    await ensureSeeded();
+    const db = await getSqliteDb();
+    const cleanText = csvText.replace(/^\uFEFF/, '').trim();
+    const lines = cleanText.split(/\r?\n/).filter(line => line.trim().length > 0);
 
-    const cleanText = csvText.replace(/^\uFEFF/, '');
+    if (lines.length <= 1) {
+      throw new Error('CSV ফাইলে কোনো ডাটা পাওয়া যায়নি');
+    }
 
-    const parseCsvRows = (text: string): string[][] => {
-      const result: string[][] = [];
-      let row: string[] = [];
-      let curr = '';
+    const parseCsvLine = (line: string): string[] => {
+      const values: string[] = [];
       let inQuotes = false;
+      let currentVal = '';
 
-      for (let i = 0; i < text.length; i++) {
-        const char = text[i];
-        const nextChar = text[i + 1];
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        const nextChar = line[i + 1];
 
         if (char === '"') {
           if (inQuotes && nextChar === '"') {
-            curr += '"';
+            currentVal += '"';
             i++;
           } else {
             inQuotes = !inQuotes;
           }
         } else if (char === ',' && !inQuotes) {
-          row.push(curr);
-          curr = '';
-        } else if ((char === '\r' || char === '\n') && !inQuotes) {
-          if (char === '\r' && nextChar === '\n') {
-            i++;
-          }
-          row.push(curr);
-          if (row.some(field => field.trim().length > 0)) {
-            result.push(row);
-          }
-          row = [];
-          curr = '';
+          values.push(currentVal.trim());
+          currentVal = '';
         } else {
-          curr += char;
+          currentVal += char;
         }
       }
-      if (curr.length > 0 || row.length > 0) {
-        row.push(curr);
-        if (row.some(field => field.trim().length > 0)) {
-          result.push(row);
-        }
-      }
-      return result;
+      values.push(currentVal.trim());
+      return values;
     };
 
-    const rows = parseCsvRows(cleanText);
-    if (rows.length < 2) {
-      throw new Error('CSV ফাইলটি খালি অথবা ডাটা সারি পাওয়া যায়নি');
-    }
-
-    const header = rows[0].map(h => h.trim().toLowerCase());
-    const dataRows = rows.slice(1);
-
-    const getVal = (row: string[], colName: string, defaultVal = '') => {
-      const idx = header.indexOf(colName.toLowerCase());
-      return idx !== -1 && row[idx] !== undefined ? row[idx].trim() : defaultVal;
-    };
-
-    const cleanedItems: Omit<VehicleHisab, 'id'>[] = dataRows.map(row => {
-      const bill = Number(getVal(row, 'bill', '0')) || 0;
-      const paid = Number(getVal(row, 'paid', '0')) || 0;
-      const dueVal = getVal(row, 'due', '');
-      const due = dueVal !== '' ? Number(dueVal) : Math.max(0, bill - paid);
-
-      return {
-        name: getVal(row, 'name'),
-        mobile: getVal(row, 'mobile'),
-        address: getVal(row, 'address'),
-        hisabType: getVal(row, 'hisabtype', getVal(row, 'hisab_type')),
-        workDetails: getVal(row, 'workdetails', getVal(row, 'work_details')),
-        date: getVal(row, 'date'),
-        stm: getVal(row, 'stm'),
-        qty: Number(getVal(row, 'qty', '0')) || 0,
-        unit: getVal(row, 'unit'),
-        rate: Number(getVal(row, 'rate', '0')) || 0,
-        amount: Number(getVal(row, 'amount', '0')) || 0,
-        billStm: getVal(row, 'billstm', getVal(row, 'bill_stm')),
-        bill: bill,
-        paidStm: getVal(row, 'paidstm', getVal(row, 'paid_stm')),
-        paid: paid,
-        due: due,
-        optional: getVal(row, 'optional')
-      };
-    });
-
-    if (cleanedItems.length === 0) {
-      throw new Error('CSV ফাইল থেকে কোনো ডাটা এক্সট্র্যাক্ট করা যায়নি');
-    }
+    const headerLine = lines[0];
+    const headers = parseCsvLine(headerLine).map(h => h.toLowerCase().replace(/['"`]/g, ''));
 
     if (mode === 'replace') {
-      await db.hisab.clear();
+      db.run('DELETE FROM hisab');
     }
 
-    await db.hisab.bulkAdd(cleanedItems as VehicleHisab[]);
-    return { count: cleanedItems.length };
+    const stmt = db.prepare(`
+      INSERT INTO hisab (name, mobile, address, hisabType, workDetails, date, stm, qty, unit, rate, amount, billStm, bill, paidStm, paid, due, optional)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    let count = 0;
+    for (let i = 1; i < lines.length; i++) {
+      const values = parseCsvLine(lines[i]);
+      if (values.length === 0 || values.every(v => v === '')) continue;
+
+      const getVal = (colNames: string[], defaultVal = '') => {
+        for (const name of colNames) {
+          const idx = headers.indexOf(name.toLowerCase());
+          if (idx !== -1 && values[idx] !== undefined) {
+            return values[idx];
+          }
+        }
+        return defaultVal;
+      };
+
+      stmt.run([
+        getVal(['name', 'নাম']),
+        getVal(['mobile', 'মোবাইল', 'ফোন']),
+        getVal(['address', 'ঠিকানা']),
+        getVal(['hisabtype', 'hisab_type', 'হিসাবের ধরন', 'ধরন']),
+        getVal(['workdetails', 'work_details', 'কাজের বিবরণ', 'বিবরণ']),
+        getVal(['date', 'তারিখ']),
+        getVal(['stm', 'বিবরণী']),
+        Number(getVal(['qty', 'পরিমাণ'], '0')) || 0,
+        getVal(['unit', 'একক']),
+        Number(getVal(['rate', 'দর'], '0')) || 0,
+        Number(getVal(['amount', 'মোট'], '0')) || 0,
+        getVal(['billstm', 'bill_stm', 'বিলের বিবরণ']),
+        Number(getVal(['bill', 'বিল'], '0')) || 0,
+        getVal(['paidstm', 'paid_stm', 'জমার বিবরণ']),
+        Number(getVal(['paid', 'জমা', 'পরিশোধ'], '0')) || 0,
+        Number(getVal(['due', 'বকেয়া'], '0')) || 0,
+        getVal(['optional', 'অন্যান্য'])
+      ]);
+      count++;
+    }
+
+    stmt.free();
+    await this.persist();
+    return { count };
   }
 }
-
-

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { GroupByMode, VehicleHisab, GroupedHisab, getGroupKey } from './types';
+import { GroupByMode, VehicleHisab, GroupedHisab, getGroupKey, DatabaseTotals } from './types';
 import { HisabStorage } from './data/storage';
 import { HisabListScreen } from './screens/HisabListScreen';
 import { AddHisabScreen } from './screens/AddHisabScreen';
@@ -21,6 +21,13 @@ export const App: React.FC = () => {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   const [groupedList, setGroupedList] = useState<GroupedHisab[]>([]);
+  const [dbTotals, setDbTotals] = useState<DatabaseTotals>({
+    totalBill: 0,
+    totalPaid: 0,
+    totalDue: 0,
+    totalQty: 0,
+    totalCount: 0
+  });
 
   // Navigation state for Add/Edit/Copy
   const [editItem, setEditItem] = useState<VehicleHisab | null>(null);
@@ -43,12 +50,13 @@ export const App: React.FC = () => {
 
   const refreshData = useCallback(async () => {
     try {
-      const list = await HisabStorage.getAllWithSearchGroupSum(
+      const { groups, totals } = await HisabStorage.getQueryResult(
         searchQuery,
         null,
         selectedGroupByMode
       );
-      setGroupedList(list);
+      setGroupedList(groups);
+      setDbTotals(totals);
     } catch (err) {
       console.error('Error fetching data from IndexedDB:', err);
     }
@@ -147,6 +155,7 @@ export const App: React.FC = () => {
       <div className={currentScreen === 'add' ? 'hidden' : 'block'}>
         <HisabListScreen
           groupedList={groupedList}
+          totals={dbTotals}
           selectedGroupByMode={selectedGroupByMode}
           expandedGroups={expandedGroups}
           highlightedGroupKey={highlightedGroupKey}

@@ -44,6 +44,19 @@ export interface GroupedHisab {
   items: VehicleHisab[];
 }
 
+export interface DatabaseTotals {
+  totalBill: number;
+  totalPaid: number;
+  totalDue: number;
+  totalQty: number;
+  totalCount: number;
+}
+
+export interface HisabQueryResult {
+  groups: GroupedHisab[];
+  totals: DatabaseTotals;
+}
+
 export interface HisabTypeOption {
   key: string;
   labelBn: string;

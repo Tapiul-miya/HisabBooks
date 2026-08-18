@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Plus } from 'lucide-react';
-import { GroupedHisab, GroupByMode, VehicleHisab, getGroupKey } from '../types';
+import { GroupedHisab, GroupByMode, VehicleHisab, getGroupKey, DatabaseTotals } from '../types';
 import { HeaderSummary } from '../components/HeaderSummary';
 import { DashboardSearchBar } from '../components/DashboardSearchBar';
 import { ViewModeFilterRow } from '../components/ViewModeFilterRow';
@@ -12,6 +12,7 @@ const BATCH_INCREMENT = 25;
 
 interface HisabListScreenProps {
   groupedList: GroupedHisab[];
+  totals?: DatabaseTotals;
   selectedGroupByMode: GroupByMode;
   expandedGroups: Set<string>;
   highlightedGroupKey?: string | null;
@@ -31,6 +32,7 @@ interface HisabListScreenProps {
 
 export const HisabListScreen: React.FC<HisabListScreenProps> = ({
   groupedList,
+  totals,
   selectedGroupByMode,
   expandedGroups,
   highlightedGroupKey,
@@ -81,18 +83,10 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
     }
   };
 
-  // Overall sums across all records (computed in O(N))
-  const { totalBill, totalPaid, totalDue } = useMemo(() => {
-    let bill = 0;
-    let paid = 0;
-    let due = 0;
-    for (let i = 0; i < groupedList.length; i++) {
-      bill += groupedList[i].totalBill || 0;
-      paid += groupedList[i].totalPaid || 0;
-      due += groupedList[i].totalDue || 0;
-    }
-    return { totalBill: bill, totalPaid: paid, totalDue: due };
-  }, [groupedList]);
+  // Overall sums directly from Database Query or fallback
+  const totalBill = totals?.totalBill ?? groupedList.reduce((acc, g) => acc + g.totalBill, 0);
+  const totalPaid = totals?.totalPaid ?? groupedList.reduce((acc, g) => acc + g.totalPaid, 0);
+  const totalDue = totals?.totalDue ?? groupedList.reduce((acc, g) => acc + g.totalDue, 0);
 
   // Progressive infinite scroll handler
   const handleScroll = useCallback((e: React.UIEvent<HTMLElement>) => {
