@@ -19,7 +19,7 @@ import {
   RotateCw,
   Layers
 } from 'lucide-react';
-import { VehicleHisab, HisabTypeOption } from '../types';
+import { VehicleHisab, HisabTypeOption, GroupByMode } from '../types';
 import { Utils } from '../util/utils';
 import { HisabStorage } from '../data/storage';
 
@@ -31,6 +31,7 @@ interface AddHisabScreenProps {
   initialAddress?: string;
   initialMobile?: string;
   initialWorkDetails?: string;
+  groupByMode?: GroupByMode;
   onSave: (entry: Omit<VehicleHisab, 'id'> | VehicleHisab) => void;
   onBack: () => void;
 }
@@ -54,18 +55,21 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
   initialAddress = '',
   initialMobile = '',
   initialWorkDetails = '',
+  groupByMode,
   onSave,
   onBack
 }) => {
   const isEditMode = Boolean(itemToEdit);
+  const isByDateWorkMode = groupByMode === GroupByMode.BY_DATE_WORK;
 
   // Freeze condition logic from AddHisabScreen.kt
-  const isTypeFrozen = isEditMode || Boolean(initialHisabType);
-  const isWorkDetailsFrozen = isEditMode || Boolean(initialWorkDetails);
-  const isNameFrozen = isEditMode || Boolean(initialName);
-  const isMobileFrozen = isEditMode || Boolean(initialMobile);
-  const isAddressFrozen = isEditMode || Boolean(initialAddress);
-  const isDateFrozen = Boolean(initialDate);
+  // In BY_DATE_WORK mode during child edit: hisabType & date are LOCKED, while workDetails, name, mobile, address are UNLOCKED!
+  const isTypeFrozen = isByDateWorkMode ? isEditMode : (isEditMode || Boolean(initialHisabType));
+  const isDateFrozen = isByDateWorkMode ? isEditMode : Boolean(initialDate);
+  const isWorkDetailsFrozen = isByDateWorkMode ? false : (isEditMode || Boolean(initialWorkDetails));
+  const isNameFrozen = isByDateWorkMode ? false : (isEditMode || Boolean(initialName));
+  const isMobileFrozen = isByDateWorkMode ? false : (isEditMode || Boolean(initialMobile));
+  const isAddressFrozen = isByDateWorkMode ? false : (isEditMode || Boolean(initialAddress));
 
   const currentDateStr = new Date().toISOString().split('T')[0];
 

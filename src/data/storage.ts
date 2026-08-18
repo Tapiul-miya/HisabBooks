@@ -418,25 +418,43 @@ export class HisabStorage {
   public static async getQueryResult(
     query: string = '',
     searchColumn: string | null = null,
-    groupByMode: GroupByMode = GroupByMode.BY_USER_DETAILS
+    groupByMode: GroupByMode = GroupByMode.BY_USER_DETAILS,
+    workDetailsFilter: string = ''
   ): Promise<HisabQueryResult> {
     const db = await getSqliteDb();
     const trimmed = query.trim();
+    const trimmedWork = workDetailsFilter.trim();
     const isUserDetails = groupByMode === GroupByMode.BY_USER_DETAILS;
 
-    // 1. Where clause for search
-    let whereClause = '';
+    // 1. Where clause for search & workDetails filter
+    const conditions: string[] = [];
     const params: (string | number)[] = [];
+
     if (trimmed.length > 0) {
       if (searchColumn) {
-        whereClause = ` WHERE ${searchColumn} LIKE ?`;
+        conditions.push(`${searchColumn} LIKE ?`);
         params.push(`%${trimmed}%`);
       } else {
-        whereClause = ` WHERE (name LIKE ? OR mobile LIKE ? OR address LIKE ? OR hisabType LIKE ? OR workDetails LIKE ? OR date LIKE ?)`;
+        conditions.push(`(name LIKE ? OR mobile LIKE ? OR address LIKE ? OR hisabType LIKE ? OR workDetails LIKE ? OR date LIKE ?)`);
         const p = `%${trimmed}%`;
         params.push(p, p, p, p, p, p);
       }
     }
+
+    if (trimmedWork.length > 0) {
+      const parts = trimmedWork.split('|').map(s => s.trim()).filter(Boolean);
+      if (parts.length > 0) {
+        for (const part of parts) {
+          conditions.push(`workDetails LIKE ?`);
+          params.push(`%${part}%`);
+        }
+      } else {
+        conditions.push(`workDetails = ?`);
+        params.push(trimmedWork);
+      }
+    }
+
+    const whereClause = conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : '';
 
     // 2. Pure SQL: Overall Sums Query
     const totalsSql = `
@@ -582,10 +600,57 @@ export class HisabStorage {
   public static async getAllWithSearchGroupSum(
     query: string = '',
     searchColumn: string | null = null,
-    groupByMode: GroupByMode = GroupByMode.BY_USER_DETAILS
+    groupByMode: GroupByMode = GroupByMode.BY_USER_DETAILS,
+    workDetailsFilter: string = ''
   ): Promise<GroupedHisab[]> {
-    const res = await this.getQueryResult(query, searchColumn, groupByMode);
+    const res = await this.getQueryResult(query, searchColumn, groupByMode, workDetailsFilter);
     return res.groups;
+  }
+
+  /**
+   * Pure SQL + JS Expansion for pipe-separated (|) workDetails:
+   * e.g., "text1|text2|text3" expands to ["text1", "text1|text2", "text1|text3", "text1|text2|text3"]
+   */
+  public static async getDistinctWorkDetails(): Promise<string[]> {
+    const db = await getSqliteDb();
+    const res = db.exec(`
+      SELECT DISTINCT TRIM(workDetails) AS work 
+      FROM hisab 
+      WHERE workDetails IS NOT NULL AND TRIM(workDetails) != '' 
+      ORDER BY work ASC
+    `);
+    const rawList: string[] = [];
+    if (res.length > 0 && res[0].values.length > 0) {
+      for (const row of res[0].values) {
+        if (row[0]) rawList.push(String(row[0]).trim());
+      }
+    }
+
+    const set = new Set<string>();
+    for (const raw of rawList) {
+      const parts = raw.split('|').map(s => s.trim()).filter(Boolean);
+      if (parts.length === 0) continue;
+      if (parts.length === 1) {
+        set.add(parts[0]);
+        continue;
+      }
+
+      const head = parts[0];
+      const tail = parts.slice(1);
+      const subsetCount = 1 << tail.length; // 2^(tail.length)
+
+      for (let i = 0; i < subsetCount; i++) {
+        const combo = [head];
+        for (let j = 0; j < tail.length; j++) {
+          if ((i & (1 << j)) !== 0) {
+            combo.push(tail[j]);
+          }
+        }
+        set.add(combo.join('|'));
+      }
+    }
+
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'bn'));
   }
 
   /**

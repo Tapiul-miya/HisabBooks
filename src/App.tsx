@@ -17,6 +17,8 @@ export const App: React.FC = () => {
   const [selectedGroupByMode, setSelectedGroupByMode] = useState<GroupByMode>(
     GroupByMode.BY_USER_DETAILS
   );
+  const [selectedWorkDetails, setSelectedWorkDetails] = useState<string>('');
+  const [workDetailsOptions, setWorkDetailsOptions] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
@@ -50,17 +52,21 @@ export const App: React.FC = () => {
 
   const refreshData = useCallback(async () => {
     try {
+      const options = await HisabStorage.getDistinctWorkDetails();
+      setWorkDetailsOptions(options);
+
       const { groups, totals } = await HisabStorage.getQueryResult(
         searchQuery,
         null,
-        selectedGroupByMode
+        selectedGroupByMode,
+        selectedWorkDetails
       );
       setGroupedList(groups);
       setDbTotals(totals);
     } catch (err) {
       console.error('Error fetching data from IndexedDB:', err);
     }
-  }, [searchQuery, selectedGroupByMode]);
+  }, [searchQuery, selectedGroupByMode, selectedWorkDetails]);
 
   useEffect(() => {
     refreshData();
@@ -122,7 +128,8 @@ export const App: React.FC = () => {
     const list = await HisabStorage.getAllWithSearchGroupSum(
       searchQuery,
       null,
-      selectedGroupByMode
+      selectedGroupByMode,
+      selectedWorkDetails
     );
     setGroupedList(list);
 
@@ -157,12 +164,15 @@ export const App: React.FC = () => {
           groupedList={groupedList}
           totals={dbTotals}
           selectedGroupByMode={selectedGroupByMode}
+          selectedWorkDetails={selectedWorkDetails}
+          workDetailsOptions={workDetailsOptions}
           expandedGroups={expandedGroups}
           highlightedGroupKey={highlightedGroupKey}
           highlightedItemId={highlightedItemId}
           searchQuery={searchQuery}
           onSearchQueryChange={setSearchQuery}
           onGroupByModeSelected={handleModeSelected}
+          onWorkDetailsFilterChange={setSelectedWorkDetails}
           onToggleGroup={handleToggleGroup}
           onAddNewClick={handleAddNewClick}
           onEditClick={handleEditClick}
@@ -185,6 +195,7 @@ export const App: React.FC = () => {
             initialAddress={copyParams?.address || ''}
             initialMobile={copyParams?.mobile || ''}
             initialWorkDetails={copyParams?.workDetails || ''}
+            groupByMode={selectedGroupByMode}
             onSave={handleSaveHisab}
             onBack={() => setCurrentScreen('list')}
           />

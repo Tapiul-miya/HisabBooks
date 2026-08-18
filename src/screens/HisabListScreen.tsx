@@ -14,12 +14,15 @@ interface HisabListScreenProps {
   groupedList: GroupedHisab[];
   totals?: DatabaseTotals;
   selectedGroupByMode: GroupByMode;
+  selectedWorkDetails: string;
+  workDetailsOptions: string[];
   expandedGroups: Set<string>;
   highlightedGroupKey?: string | null;
   highlightedItemId?: number | null;
   searchQuery: string;
   onSearchQueryChange: (q: string) => void;
   onGroupByModeSelected: (mode: GroupByMode) => void;
+  onWorkDetailsFilterChange: (workDetails: string) => void;
   onToggleGroup: (key: string) => void;
   onAddNewClick: () => void;
   onEditClick: (item: VehicleHisab) => void;
@@ -35,12 +38,15 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
   groupedList,
   totals,
   selectedGroupByMode,
+  selectedWorkDetails,
+  workDetailsOptions = [],
   expandedGroups,
   highlightedGroupKey,
   highlightedItemId,
   searchQuery,
   onSearchQueryChange,
   onGroupByModeSelected,
+  onWorkDetailsFilterChange,
   onToggleGroup,
   onAddNewClick,
   onEditClick,
@@ -132,7 +138,10 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
 
           <ViewModeFilterRow
             selectedMode={selectedGroupByMode}
+            selectedWorkDetails={selectedWorkDetails}
+            workDetailsOptions={workDetailsOptions}
             onModeSelected={onGroupByModeSelected}
+            onWorkDetailsFilterChange={onWorkDetailsFilterChange}
           />
         </div>
       </div>
