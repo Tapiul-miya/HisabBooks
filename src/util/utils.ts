@@ -40,6 +40,9 @@ export namespace Utils {
     }
   }
 
+  export const evalMathExpression = calculateFromString;
+  export const evalExpression = calculateFromString;
+
   function evalBodmas(expression: string): number {
     let pos = -1;
     let ch = -1;

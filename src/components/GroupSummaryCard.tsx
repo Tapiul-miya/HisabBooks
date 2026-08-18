@@ -72,13 +72,13 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
   return (
     <>
       <div
-        className={`bg-white rounded-xl border-2 ${borderColor} shadow-xs overflow-hidden transition-all duration-300 ${
+        className={`w-full bg-gradient-to-b from-[#F8FAFC] via-[#F1F5F9] to-[#E2E8F0] rounded-xl border-2 ${borderColor} shadow-xs overflow-hidden transition-all duration-300 ${
           shouldHighlightParent ? 'animate-blur-float ring-4 ring-blue-400 bg-blue-50/50' : ''
         }`}
       >
         <div
           onClick={onExpandToggle}
-          className="p-3 cursor-pointer select-none"
+          className="p-3 sm:p-3.5 cursor-pointer select-none"
         >
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
@@ -88,10 +88,15 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
               {mode === GroupByMode.BY_USER_DETAILS && (
                 <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5 text-xs text-[#455A64]">
                   {groupedHisab.mobile && (
-                    <span className="flex items-center space-x-1">
-                      <Phone size={11} className="text-slate-500" />
+                    <a
+                      href={`tel:${groupedHisab.mobile}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="flex items-center space-x-1 text-emerald-700 hover:text-emerald-800 hover:underline active:opacity-75 font-medium cursor-pointer transition-colors"
+                      title="সরাসরি কল করুন"
+                    >
+                      <Phone size={11} className="text-emerald-600 shrink-0" />
                       <span>{groupedHisab.mobile}</span>
-                    </span>
+                    </a>
                   )}
                   {groupedHisab.address && (
                     <span className="flex items-center space-x-1">
@@ -159,7 +164,7 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
               </div>
             </div>
 
-            <div className="font-medium text-[#2C3E50] shrink-0 text-right">
+            <div className="bg-amber-50 text-amber-900 border border-amber-200/80 px-2 py-0.5 rounded-md text-[11px] sm:text-xs font-bold shrink-0 text-right shadow-2xs">
               {qtyText}
             </div>
           </div>
@@ -167,26 +172,30 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
           <div className="my-2 border-t border-[#CFD8DC]"></div>
 
           <div className="flex items-center justify-between text-xs font-semibold text-[#2C3E50]">
-            <div>
-              বিল: ৳{Utils.toCleanString(groupedHisab.totalBill)} | জমা: ৳{Utils.toCleanString(groupedHisab.totalPaid)}
-            </div>
-            <div>
-              {isDue ? (
-                <span className="font-bold text-[#DC2626]">
-                  বকেয়া: ৳{Utils.toCleanString(groupedHisab.totalDue)}
-                </span>
-              ) : (
-                <span className="font-bold text-[#16A34A]">
-                  পরিশোধিত: ৳{Utils.toCleanString(groupedHisab.totalDue)}
-                </span>
-              )}
-            </div>
+            <span className="text-slate-700">
+              বিল: <span className="font-bold text-slate-900">৳{Utils.toCleanString(groupedHisab.totalBill)}</span>
+            </span>
+            <span className="text-[#15803D]">
+              জমা: <span className="font-bold text-[#15803D]">৳{Utils.toCleanString(groupedHisab.totalPaid)}</span>
+            </span>
+          </div>
+
+          <div className="flex justify-end mt-1.5">
+            {isDue ? (
+              <span className="text-xs font-bold text-[#DC2626] bg-red-50 px-2 py-0.5 rounded-md whitespace-nowrap">
+                বকেয়া: ৳{Utils.toCleanString(groupedHisab.totalDue)}
+              </span>
+            ) : (
+              <span className="text-xs font-bold text-[#16A34A] bg-emerald-50 px-2 py-0.5 rounded-md whitespace-nowrap">
+                পরিশোধিত: ৳{Utils.toCleanString(groupedHisab.totalDue)}
+              </span>
+            )}
           </div>
         </div>
 
       {expanded && (
-        <div className="px-4 pb-4 pt-1 bg-slate-50/50 border-t border-slate-100 max-h-[300px] overflow-y-auto">
-          <div className="text-xs font-bold text-[#0D47A1] mb-2 py-1">
+        <div className="px-2 sm:px-3 pb-3 pt-1.5 bg-[#E2E8F0]/60 border-t border-slate-300/80 max-h-[340px] overflow-y-auto">
+          <div className="text-xs font-bold text-[#0D47A1] mb-2 px-1 py-0.5">
             বিস্তারিত লেনদেন সমূহ:
           </div>
           <div className="space-y-2">

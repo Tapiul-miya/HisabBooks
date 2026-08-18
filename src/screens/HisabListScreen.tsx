@@ -95,6 +95,7 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
   const totalBill = totals?.totalBill ?? groupedList.reduce((acc, g) => acc + g.totalBill, 0);
   const totalPaid = totals?.totalPaid ?? groupedList.reduce((acc, g) => acc + g.totalPaid, 0);
   const totalDue = totals?.totalDue ?? groupedList.reduce((acc, g) => acc + g.totalDue, 0);
+  const totalQty = totals?.totalQty ?? groupedList.reduce((acc, g) => acc + (g.totalQty || 0), 0);
 
   // Progressive infinite scroll handler
   const handleScroll = useCallback((e: React.UIEvent<HTMLElement>) => {
@@ -114,13 +115,14 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
   }, [groupedList, visibleCount]);
 
   return (
-    <div className="h-screen h-[100dvh] bg-[#E1E8EF] flex flex-col max-w-lg mx-auto shadow-xl relative overflow-hidden">
+    <div className="h-screen h-[100dvh] bg-[#E1E8EF] flex flex-col max-w-xl sm:max-w-2xl mx-auto shadow-xl relative overflow-hidden">
       {/* Top Header & Filters Fixed */}
       <div className="shrink-0 z-30 shadow-xs">
         <HeaderSummary
           totalBill={totalBill}
           totalPaid={totalPaid}
           totalDue={totalDue}
+          totalQty={totalQty}
           onExportPdf={onExportPdf}
           onShowBackup={onShowBackup}
           onShowAbout={onShowAbout}
@@ -150,7 +152,7 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
       <main
         ref={mainScrollRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto px-3.5 pt-2 space-y-3.5 pb-24 min-h-0"
+        className="flex-1 overflow-y-auto px-2.5 sm:px-4 pt-2 space-y-3 pb-24 min-h-0"
       >
         {groupedList.length === 0 ? (
           <EmptyStateView />

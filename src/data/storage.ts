@@ -27,6 +27,12 @@ const INITIAL_SAMPLE_DATA: Omit<VehicleHisab, 'id'>[] = [
     paidStm: '1000',
     paid: 1000,
     due: 700,
+    spendStm: '',
+    spend: 0,
+    profit: 0,
+    cashoutStm: '',
+    cashout: 0,
+    credit: 0,
     optional: ''
   },
   {
@@ -46,6 +52,12 @@ const INITIAL_SAMPLE_DATA: Omit<VehicleHisab, 'id'>[] = [
     paidStm: '1200',
     paid: 1200,
     due: 0,
+    spendStm: '',
+    spend: 0,
+    profit: 0,
+    cashoutStm: '',
+    cashout: 0,
+    credit: 0,
     optional: ''
   },
   {
@@ -65,6 +77,12 @@ const INITIAL_SAMPLE_DATA: Omit<VehicleHisab, 'id'>[] = [
     paidStm: '3000',
     paid: 3000,
     due: 1000,
+    spendStm: '',
+    spend: 0,
+    profit: 0,
+    cashoutStm: '',
+    cashout: 0,
+    credit: 0,
     optional: ''
   },
   {
@@ -84,6 +102,12 @@ const INITIAL_SAMPLE_DATA: Omit<VehicleHisab, 'id'>[] = [
     paidStm: '8000',
     paid: 8000,
     due: 0,
+    spendStm: '',
+    spend: 0,
+    profit: 0,
+    cashoutStm: '',
+    cashout: 0,
+    credit: 0,
     optional: ''
   }
 ];
@@ -172,6 +196,12 @@ async function getSqliteDb(): Promise<Database> {
         paidStm TEXT DEFAULT '',
         paid REAL DEFAULT 0,
         due REAL DEFAULT 0,
+        spendStm TEXT DEFAULT '',
+        spend REAL DEFAULT 0,
+        profit REAL DEFAULT 0,
+        cashoutStm TEXT DEFAULT '',
+        cashout REAL DEFAULT 0,
+        credit REAL DEFAULT 0,
         optional TEXT DEFAULT ''
       );
 
@@ -180,19 +210,50 @@ async function getSqliteDb(): Promise<Database> {
       CREATE INDEX IF NOT EXISTS idx_hisab_due ON hisab(due);
     `);
 
+    // Migration: ensure all new columns exist for existing databases
+    try {
+      const tableInfo = db.exec("PRAGMA table_info(hisab);");
+      const existingCols = new Set<string>();
+      if (tableInfo.length > 0 && tableInfo[0].values) {
+        for (const row of tableInfo[0].values) {
+          existingCols.add(String(row[1]));
+        }
+      }
+
+      const columnsToAdd: { name: string; type: string; defaultVal: string }[] = [
+        { name: 'spendStm', type: 'TEXT', defaultVal: "''" },
+        { name: 'spend', type: 'REAL', defaultVal: '0' },
+        { name: 'profit', type: 'REAL', defaultVal: '0' },
+        { name: 'cashoutStm', type: 'TEXT', defaultVal: "''" },
+        { name: 'cashout', type: 'REAL', defaultVal: '0' },
+        { name: 'credit', type: 'REAL', defaultVal: '0' },
+        { name: 'optional', type: 'TEXT', defaultVal: "''" },
+      ];
+
+      for (const col of columnsToAdd) {
+        if (!existingCols.has(col.name)) {
+          db.run(`ALTER TABLE hisab ADD COLUMN ${col.name} ${col.type} DEFAULT ${col.defaultVal};`);
+        }
+      }
+    } catch (e) {
+      console.warn('Migration check warning:', e);
+    }
+
     // Check count for seeding
     const res = db.exec('SELECT COUNT(id) AS count FROM hisab');
     const count = res.length > 0 && res[0].values.length > 0 ? Number(res[0].values[0][0]) : 0;
     if (count === 0) {
       const stmt = db.prepare(`
-        INSERT INTO hisab (name, mobile, address, hisabType, workDetails, date, stm, qty, unit, rate, amount, billStm, bill, paidStm, paid, due, optional)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO hisab (name, mobile, address, hisabType, workDetails, date, stm, qty, unit, rate, amount, billStm, bill, paidStm, paid, due, spendStm, spend, profit, cashoutStm, cashout, credit, optional)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const item of INITIAL_SAMPLE_DATA) {
         stmt.run([
           item.name, item.mobile, item.address, item.hisabType, item.workDetails,
           item.date, item.stm, item.qty, item.unit, item.rate, item.amount,
-          item.billStm, item.bill, item.paidStm, item.paid, item.due, item.optional
+          item.billStm, item.bill, item.paidStm, item.paid, item.due,
+          item.spendStm || '', item.spend || 0, item.profit || 0, item.cashoutStm || '', item.cashout || 0, item.credit || 0,
+          item.optional
         ]);
       }
       stmt.free();
@@ -253,13 +314,15 @@ export class HisabStorage {
   public static async insert(item: Omit<VehicleHisab, 'id'>): Promise<number> {
     const db = await getSqliteDb();
     const stmt = db.prepare(`
-      INSERT INTO hisab (name, mobile, address, hisabType, workDetails, date, stm, qty, unit, rate, amount, billStm, bill, paidStm, paid, due, optional)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO hisab (name, mobile, address, hisabType, workDetails, date, stm, qty, unit, rate, amount, billStm, bill, paidStm, paid, due, spendStm, spend, profit, cashoutStm, cashout, credit, optional)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run([
       item.name || '', item.mobile || '', item.address || '', item.hisabType || '', item.workDetails || '',
       item.date || '', item.stm || '', item.qty || 0, item.unit || '', item.rate || 0, item.amount || 0,
-      item.billStm || '', item.bill || 0, item.paidStm || '', item.paid || 0, item.due || 0, item.optional || ''
+      item.billStm || '', item.bill || 0, item.paidStm || '', item.paid || 0, item.due || 0,
+      item.spendStm || '', item.spend || 0, item.profit || 0, item.cashoutStm || '', item.cashout || 0, item.credit || 0,
+      item.optional || ''
     ]);
     stmt.free();
 
@@ -279,13 +342,17 @@ export class HisabStorage {
       UPDATE hisab
       SET name = ?, mobile = ?, address = ?, hisabType = ?, workDetails = ?,
           date = ?, stm = ?, qty = ?, unit = ?, rate = ?, amount = ?,
-          billStm = ?, bill = ?, paidStm = ?, paid = ?, due = ?, optional = ?
+          billStm = ?, bill = ?, paidStm = ?, paid = ?, due = ?,
+          spendStm = ?, spend = ?, profit = ?, cashoutStm = ?, cashout = ?, credit = ?,
+          optional = ?
       WHERE id = ?
     `);
     stmt.run([
       item.name || '', item.mobile || '', item.address || '', item.hisabType || '', item.workDetails || '',
       item.date || '', item.stm || '', item.qty || 0, item.unit || '', item.rate || 0, item.amount || 0,
-      item.billStm || '', item.bill || 0, item.paidStm || '', item.paid || 0, item.due || 0, item.optional || '',
+      item.billStm || '', item.bill || 0, item.paidStm || '', item.paid || 0, item.due || 0,
+      item.spendStm || '', item.spend || 0, item.profit || 0, item.cashoutStm || '', item.cashout || 0, item.credit || 0,
+      item.optional || '',
       item.id
     ]);
     stmt.free();
@@ -646,11 +713,11 @@ export class HisabStorage {
             combo.push(tail[j]);
           }
         }
-        set.add(combo.join('|'));
+        set.add(combo.join(' | '));
       }
     }
 
-    return Array.from(set).sort((a, b) => a.localeCompare(b, 'bn'));
+    return Array.from(set).filter(Boolean).sort((a, b) => a.localeCompare(b, 'bn'));
   }
 
   /**
@@ -681,7 +748,9 @@ export class HisabStorage {
     const headers = [
       'id', 'name', 'mobile', 'address', 'hisabType', 'workDetails',
       'date', 'stm', 'qty', 'unit', 'rate', 'amount',
-      'billStm', 'bill', 'paidStm', 'paid', 'due', 'optional'
+      'billStm', 'bill', 'paidStm', 'paid', 'due',
+      'spendStm', 'spend', 'profit', 'cashoutStm', 'cashout', 'credit',
+      'optional'
     ];
 
     const escapeCsv = (val: unknown) => {
@@ -734,13 +803,19 @@ export class HisabStorage {
     sql += `  \`paidStm\` TEXT,\n`;
     sql += `  \`paid\` REAL,\n`;
     sql += `  \`due\` REAL,\n`;
+    sql += `  \`spendStm\` TEXT,\n`;
+    sql += `  \`spend\` REAL,\n`;
+    sql += `  \`profit\` REAL,\n`;
+    sql += `  \`cashoutStm\` TEXT,\n`;
+    sql += `  \`cashout\` REAL,\n`;
+    sql += `  \`credit\` REAL,\n`;
     sql += `  \`optional\` TEXT\n`;
     sql += `);\n\n`;
 
     if (items.length > 0) {
-      sql += `INSERT INTO \`hisab\` (\`name\`, \`mobile\`, \`address\`, \`hisabType\`, \`workDetails\`, \`date\`, \`stm\`, \`qty\`, \`unit\`, \`rate\`, \`amount\`, \`billStm\`, \`bill\`, \`paidStm\`, \`paid\`, \`due\`, \`optional\`) VALUES\n`;
+      sql += `INSERT INTO \`hisab\` (\`name\`, \`mobile\`, \`address\`, \`hisabType\`, \`workDetails\`, \`date\`, \`stm\`, \`qty\`, \`unit\`, \`rate\`, \`amount\`, \`billStm\`, \`bill\`, \`paidStm\`, \`paid\`, \`due\`, \`spendStm\`, \`spend\`, \`profit\`, \`cashoutStm\`, \`cashout\`, \`credit\`, \`optional\`) VALUES\n`;
       const valueRows = items.map(item => {
-        return `(${escapeSql(item.name)}, ${escapeSql(item.mobile)}, ${escapeSql(item.address)}, ${escapeSql(item.hisabType)}, ${escapeSql(item.workDetails)}, ${escapeSql(item.date)}, ${escapeSql(item.stm)}, ${escapeSql(item.qty)}, ${escapeSql(item.unit)}, ${escapeSql(item.rate)}, ${escapeSql(item.amount)}, ${escapeSql(item.billStm)}, ${escapeSql(item.bill)}, ${escapeSql(item.paidStm)}, ${escapeSql(item.paid)}, ${escapeSql(item.due)}, ${escapeSql(item.optional)})`;
+        return `(${escapeSql(item.name)}, ${escapeSql(item.mobile)}, ${escapeSql(item.address)}, ${escapeSql(item.hisabType)}, ${escapeSql(item.workDetails)}, ${escapeSql(item.date)}, ${escapeSql(item.stm)}, ${escapeSql(item.qty)}, ${escapeSql(item.unit)}, ${escapeSql(item.rate)}, ${escapeSql(item.amount)}, ${escapeSql(item.billStm)}, ${escapeSql(item.bill)}, ${escapeSql(item.paidStm)}, ${escapeSql(item.paid)}, ${escapeSql(item.due)}, ${escapeSql(item.spendStm || '')}, ${escapeSql(item.spend || 0)}, ${escapeSql(item.profit || 0)}, ${escapeSql(item.cashoutStm || '')}, ${escapeSql(item.cashout || 0)}, ${escapeSql(item.credit || 0)}, ${escapeSql(item.optional)})`;
       });
       sql += valueRows.join(',\n') + ';\n';
     }
@@ -821,8 +896,8 @@ export class HisabStorage {
     }
 
     const stmt = db.prepare(`
-      INSERT INTO hisab (name, mobile, address, hisabType, workDetails, date, stm, qty, unit, rate, amount, billStm, bill, paidStm, paid, due, optional)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO hisab (name, mobile, address, hisabType, workDetails, date, stm, qty, unit, rate, amount, billStm, bill, paidStm, paid, due, spendStm, spend, profit, cashoutStm, cashout, credit, optional)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     let count = 0;
@@ -844,6 +919,12 @@ export class HisabStorage {
         String(item.paidStm || item.paid_stm || item['জমার বিবরণ'] || item.PaidStm || ''),
         Number(item.paid || item['জমা'] || item['পরিশোধ'] || item.Paid || 0),
         Number(item.due || item['বকেয়া'] || item.Due || 0),
+        String(item.spendStm || item.spend_stm || item['খরচের বিবরণ'] || item.SpendStm || ''),
+        Number(item.spend || item['খরচ'] || item.Spend || 0),
+        Number(item.profit || item['লাভ'] || item.Profit || 0),
+        String(item.cashoutStm || item.cashout_stm || item['ক্যাশআউটের বিবরণ'] || item.CashoutStm || ''),
+        Number(item.cashout || item['ক্যাশআউট'] || item.Cashout || 0),
+        Number(item.credit || item['ক্রেডিট'] || item.Credit || 0),
         String(item.optional || item['অন্যান্য'] || item.Optional || '')
       ]);
       count++;
@@ -900,8 +981,8 @@ export class HisabStorage {
     }
 
     const stmt = db.prepare(`
-      INSERT INTO hisab (name, mobile, address, hisabType, workDetails, date, stm, qty, unit, rate, amount, billStm, bill, paidStm, paid, due, optional)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO hisab (name, mobile, address, hisabType, workDetails, date, stm, qty, unit, rate, amount, billStm, bill, paidStm, paid, due, spendStm, spend, profit, cashoutStm, cashout, credit, optional)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     let count = 0;
@@ -936,6 +1017,12 @@ export class HisabStorage {
         getVal(['paidstm', 'paid_stm', 'জমার বিবরণ']),
         Number(getVal(['paid', 'জমা', 'পরিশোধ'], '0')) || 0,
         Number(getVal(['due', 'বকেয়া'], '0')) || 0,
+        getVal(['spendstm', 'spend_stm', 'খরচের বিবরণ']),
+        Number(getVal(['spend', 'খরচ'], '0')) || 0,
+        Number(getVal(['profit', 'লাভ'], '0')) || 0,
+        getVal(['cashoutstm', 'cashout_stm', 'ক্যাশআউটের বিবরণ']),
+        Number(getVal(['cashout', 'ক্যাশআউট'], '0')) || 0,
+        Number(getVal(['credit', 'ক্রেডিট'], '0')) || 0,
         getVal(['optional', 'অন্যান্য'])
       ]);
       count++;

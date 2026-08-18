@@ -17,7 +17,10 @@ import {
   AlertCircle,
   Save,
   RotateCw,
-  Layers
+  Layers,
+  ChevronDown,
+  ChevronUp,
+  SlidersHorizontal
 } from 'lucide-react';
 import { VehicleHisab, HisabTypeOption, GroupByMode } from '../types';
 import { Utils } from '../util/utils';
@@ -64,12 +67,12 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
 
   // Freeze condition logic from AddHisabScreen.kt
   // In BY_DATE_WORK mode during child edit: hisabType & date are LOCKED, while workDetails, name, mobile, address are UNLOCKED!
-  const isTypeFrozen = isByDateWorkMode ? isEditMode : (isEditMode || Boolean(initialHisabType));
-  const isDateFrozen = isByDateWorkMode ? isEditMode : Boolean(initialDate);
-  const isWorkDetailsFrozen = isByDateWorkMode ? false : (isEditMode || Boolean(initialWorkDetails));
-  const isNameFrozen = isByDateWorkMode ? false : (isEditMode || Boolean(initialName));
-  const isMobileFrozen = isByDateWorkMode ? false : (isEditMode || Boolean(initialMobile));
-  const isAddressFrozen = isByDateWorkMode ? false : (isEditMode || Boolean(initialAddress));
+  const isTypeFrozen = isEditMode || Boolean(initialHisabType);
+  const isDateFrozen = isEditMode || Boolean(initialDate);
+  const isWorkDetailsFrozen = isEditMode || Boolean(initialWorkDetails);
+  const isNameFrozen = isEditMode || Boolean(initialName);
+  const isMobileFrozen = isEditMode || Boolean(initialMobile);
+  const isAddressFrozen = isEditMode || Boolean(initialAddress);
 
   const currentDateStr = new Date().toISOString().split('T')[0];
 
@@ -78,11 +81,39 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
     return TYPE_OPTIONS.find(o => o.key === key) || TYPE_OPTIONS[0];
   });
 
+  const initialParsedWork = useMemo(() => {
+    const raw = (itemToEdit?.workDetails || initialWorkDetails || '').trim();
+    if (!raw) return { work: '', year: '', session: '', manager: '', vehicle: '' };
+    const parts = raw.split('|').map(p => p.trim());
+    return {
+      work: parts[0] || '',
+      year: parts[1] || '',
+      session: parts[2] || '',
+      manager: parts[3] || '',
+      vehicle: parts[4] || ''
+    };
+  }, [itemToEdit?.workDetails, initialWorkDetails]);
+
   const [name, setName] = useState(itemToEdit?.name || initialName);
   const [mobile, setMobile] = useState(itemToEdit?.mobile || initialMobile);
   const [address, setAddress] = useState(itemToEdit?.address || initialAddress);
-  const [workDetails, setWorkDetails] = useState(itemToEdit?.workDetails || initialWorkDetails);
+  const [workDetails, setWorkDetails] = useState(initialParsedWork.work);
+  const [year, setYear] = useState(initialParsedWork.year);
+  const [session, setSession] = useState(initialParsedWork.session);
+  const [managerName, setManagerName] = useState(initialParsedWork.manager);
+  const [vehicleName, setVehicleName] = useState(initialParsedWork.vehicle);
   const [optional, setOptional] = useState(itemToEdit?.optional || '');
+
+  const concatenatedWorkDetails = useMemo(() => {
+    const parts = [
+      workDetails.trim(),
+      year.trim(),
+      session.trim(),
+      managerName.trim(),
+      vehicleName.trim()
+    ].filter(Boolean);
+    return parts.join(' | ');
+  }, [workDetails, year, session, managerName, vehicleName]);
 
   const [allEntries, setAllEntries] = useState<VehicleHisab[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -96,6 +127,18 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
 
   const [showBedSuggestions, setShowBedSuggestions] = useState(false);
   const bedContainerRef = useRef<HTMLDivElement>(null);
+
+  const [showYearSuggestions, setShowYearSuggestions] = useState(false);
+  const yearContainerRef = useRef<HTMLDivElement>(null);
+
+  const [showSessionSuggestions, setShowSessionSuggestions] = useState(false);
+  const sessionContainerRef = useRef<HTMLDivElement>(null);
+
+  const [showManagerSuggestions, setShowManagerSuggestions] = useState(false);
+  const managerContainerRef = useRef<HTMLDivElement>(null);
+
+  const [showVehicleSuggestions, setShowVehicleSuggestions] = useState(false);
+  const vehicleContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     HisabStorage.getAll().then(data => {
@@ -119,6 +162,18 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
       }
       if (bedContainerRef.current && !bedContainerRef.current.contains(target)) {
         setShowBedSuggestions(false);
+      }
+      if (yearContainerRef.current && !yearContainerRef.current.contains(target)) {
+        setShowYearSuggestions(false);
+      }
+      if (sessionContainerRef.current && !sessionContainerRef.current.contains(target)) {
+        setShowSessionSuggestions(false);
+      }
+      if (managerContainerRef.current && !managerContainerRef.current.contains(target)) {
+        setShowManagerSuggestions(false);
+      }
+      if (vehicleContainerRef.current && !vehicleContainerRef.current.contains(target)) {
+        setShowVehicleSuggestions(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -214,6 +269,62 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
     return uniqueList.filter(b => b.toLowerCase().includes(query)).slice(0, 8);
   }, [allEntries, optional]);
 
+  const yearSuggestions = useMemo(() => {
+    const query = year.trim().toLowerCase();
+    if (!query) return [];
+    const set = new Set<string>();
+    for (const item of allEntries) {
+      if (item.workDetails && item.workDetails.includes('|')) {
+        const parts = item.workDetails.split('|').map(p => p.trim());
+        if (parts[1]) set.add(parts[1]);
+      }
+    }
+    const list = Array.from(set).filter(Boolean);
+    return list.filter(y => y.toLowerCase().includes(query)).slice(0, 8);
+  }, [allEntries, year]);
+
+  const sessionSuggestions = useMemo(() => {
+    const query = session.trim().toLowerCase();
+    if (!query) return [];
+    const set = new Set<string>();
+    for (const item of allEntries) {
+      if (item.workDetails && item.workDetails.includes('|')) {
+        const parts = item.workDetails.split('|').map(p => p.trim());
+        if (parts[2]) set.add(parts[2]);
+      }
+    }
+    const list = Array.from(set).filter(Boolean);
+    return list.filter(s => s.toLowerCase().includes(query)).slice(0, 8);
+  }, [allEntries, session]);
+
+  const managerSuggestions = useMemo(() => {
+    const query = managerName.trim().toLowerCase();
+    if (!query) return [];
+    const set = new Set<string>();
+    for (const item of allEntries) {
+      if (item.workDetails && item.workDetails.includes('|')) {
+        const parts = item.workDetails.split('|').map(p => p.trim());
+        if (parts[3]) set.add(parts[3]);
+      }
+    }
+    const list = Array.from(set).filter(Boolean);
+    return list.filter(m => m.toLowerCase().includes(query)).slice(0, 8);
+  }, [allEntries, managerName]);
+
+  const vehicleSuggestions = useMemo(() => {
+    const query = vehicleName.trim().toLowerCase();
+    if (!query) return [];
+    const set = new Set<string>();
+    for (const item of allEntries) {
+      if (item.workDetails && item.workDetails.includes('|')) {
+        const parts = item.workDetails.split('|').map(p => p.trim());
+        if (parts[4]) set.add(parts[4]);
+      }
+    }
+    const list = Array.from(set).filter(Boolean);
+    return list.filter(v => v.toLowerCase().includes(query)).slice(0, 8);
+  }, [allEntries, vehicleName]);
+
   const handleSelectSuggestion = (item: VehicleHisab) => {
     if (item.name) setName(item.name);
 
@@ -240,7 +351,16 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
   };
 
   const handleSelectWorkSuggestion = (val: string) => {
-    setWorkDetails(val);
+    if (val.includes('|')) {
+      const parts = val.split('|').map(p => p.trim());
+      setWorkDetails(parts[0] || '');
+      setYear(parts[1] || '');
+      setSession(parts[2] || '');
+      setManagerName(parts[3] || '');
+      setVehicleName(parts[4] || '');
+    } else {
+      setWorkDetails(val);
+    }
     setShowWorkSuggestions(false);
   };
 
@@ -286,6 +406,10 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
     return '';
   });
 
+  // 6 Additional financial fields (STM inputs are editable, calculated amounts are read-only)
+  const [spendStm, setSpendStm] = useState(itemToEdit?.spendStm || '');
+  const [cashoutStm, setCashoutStm] = useState(itemToEdit?.cashoutStm || '');
+
   // Real-time calculation engine
   const calculation = useMemo(() => {
     return Utils.recalculateHisab(
@@ -300,6 +424,43 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
   const { qty, amount, bill, paid, due, unit, details } = calculation;
   const currentTypeKey = selectedOption.key;
   const hasJoinEndDate = useMemo(() => Utils.hasJoinEndDateBlocks(stm), [stm]);
+
+  // Read-only calculated values for spend, profit, cashout, credit
+  const spend = useMemo(() => {
+    if (spendStm.trim()) {
+      const val = Utils.calculateFromString(spendStm);
+      return isNaN(val) ? 0 : val;
+    }
+    return itemToEdit?.spend || 0;
+  }, [spendStm, itemToEdit?.spend]);
+
+  const cashout = useMemo(() => {
+    if (cashoutStm.trim()) {
+      const val = Utils.calculateFromString(cashoutStm);
+      return isNaN(val) ? 0 : val;
+    }
+    return itemToEdit?.cashout || 0;
+  }, [cashoutStm, itemToEdit?.cashout]);
+
+  const profit = useMemo(() => {
+    const revenue = bill > 0 ? bill : amount;
+    return revenue - spend;
+  }, [bill, amount, spend]);
+
+  const credit = useMemo(() => {
+    return paid - cashout;
+  }, [paid, cashout]);
+
+  const [showExtraFields, setShowExtraFields] = useState(() => {
+    return Boolean(
+      itemToEdit?.spendStm ||
+      (itemToEdit?.spend && itemToEdit.spend !== 0) ||
+      (itemToEdit?.profit && itemToEdit.profit !== 0) ||
+      itemToEdit?.cashoutStm ||
+      (itemToEdit?.cashout && itemToEdit.cashout !== 0) ||
+      (itemToEdit?.credit && itemToEdit.credit !== 0)
+    );
+  });
 
   // Dynamic labels
   const stmLabel = useMemo(() => {
@@ -404,7 +565,7 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
       mobile,
       address,
       hisabType: selectedOption.key,
-      workDetails,
+      workDetails: concatenatedWorkDetails,
       date: date.trim(),
       stm,
       qty,
@@ -416,6 +577,12 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
       paidStm,
       paid,
       due,
+      spendStm,
+      spend,
+      profit,
+      cashoutStm,
+      cashout,
+      credit,
       optional
     };
 
@@ -492,7 +659,7 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
                 }}
                 placeholder="যেমন: মাটি কাটা / বালু পরিবহন"
                 className={`w-full bg-[#F8FAFC] border border-slate-300 rounded-xl pl-9 pr-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-[#1565C0] ${
-                  isWorkDetailsFrozen ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''
+                  isWorkDetailsFrozen ? 'bg-slate-100/90 text-slate-600 cursor-not-allowed font-medium' : ''
                 }`}
               />
             </div>
@@ -530,6 +697,206 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
             )}
           </div>
 
+          {/* Additional Sub-fields for Work Concatenation */}
+          <div className="bg-slate-50/80 border border-slate-200 rounded-xl p-3 space-y-2.5">
+            <div className="grid grid-cols-2 gap-2">
+              {/* কত শাল */}
+              <div className="space-y-1 relative" ref={yearContainerRef}>
+                <label className="text-[11px] font-semibold text-slate-600 flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <Calendar size={12} className="text-[#1565C0]" />
+                    <span>কত শাল</span>
+                  </span>
+                  {isWorkDetailsFrozen && <Lock size={11} className="text-slate-400" />}
+                </label>
+                <div className="relative flex items-center">
+                  <input
+                    type="text"
+                    disabled={isWorkDetailsFrozen}
+                    value={year}
+                    onChange={(e) => {
+                      setYear(e.target.value);
+                      setShowYearSuggestions(true);
+                    }}
+                    onFocus={() => setShowYearSuggestions(true)}
+                    placeholder="যেমন: ২০২৪"
+                    className={`w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-[#1565C0] ${
+                      isWorkDetailsFrozen ? 'bg-slate-100/90 text-slate-600 cursor-not-allowed font-medium' : ''
+                    }`}
+                  />
+                </div>
+                {!isWorkDetailsFrozen && showYearSuggestions && yearSuggestions.length > 0 && (
+                  <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-36 overflow-y-auto divide-y divide-slate-100">
+                    {yearSuggestions.map((item, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          setYear(item);
+                          setShowYearSuggestions(false);
+                        }}
+                        className="w-full text-left px-2.5 py-1.5 text-xs text-slate-700 hover:bg-blue-50 active:bg-blue-100 flex items-center justify-between transition-colors"
+                      >
+                        <span>{item}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* কোন সেশন */}
+              <div className="space-y-1 relative" ref={sessionContainerRef}>
+                <label className="text-[11px] font-semibold text-slate-600 flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <Layers size={12} className="text-[#1565C0]" />
+                    <span>কোন সেশন</span>
+                  </span>
+                  {isWorkDetailsFrozen && <Lock size={11} className="text-slate-400" />}
+                </label>
+                <div className="relative flex items-center">
+                  <input
+                    type="text"
+                    disabled={isWorkDetailsFrozen}
+                    value={session}
+                    onChange={(e) => {
+                      setSession(e.target.value);
+                      setShowSessionSuggestions(true);
+                    }}
+                    onFocus={() => setShowSessionSuggestions(true)}
+                    placeholder="যেমন: রবি / খরিপ"
+                    className={`w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-[#1565C0] ${
+                      isWorkDetailsFrozen ? 'bg-slate-100/90 text-slate-600 cursor-not-allowed font-medium' : ''
+                    }`}
+                  />
+                </div>
+                {!isWorkDetailsFrozen && showSessionSuggestions && sessionSuggestions.length > 0 && (
+                  <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-36 overflow-y-auto divide-y divide-slate-100">
+                    {sessionSuggestions.map((item, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          setSession(item);
+                          setShowSessionSuggestions(false);
+                        }}
+                        className="w-full text-left px-2.5 py-1.5 text-xs text-slate-700 hover:bg-blue-50 active:bg-blue-100 flex items-center justify-between transition-colors"
+                      >
+                        <span>{item}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* ম্যানেজারের নাম */}
+              <div className="space-y-1 relative" ref={managerContainerRef}>
+                <label className="text-[11px] font-semibold text-slate-600 flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <User size={12} className="text-[#1565C0]" />
+                    <span>ম্যানেজারের নাম</span>
+                  </span>
+                  {isWorkDetailsFrozen && <Lock size={11} className="text-slate-400" />}
+                </label>
+                <div className="relative flex items-center">
+                  <input
+                    type="text"
+                    disabled={isWorkDetailsFrozen}
+                    value={managerName}
+                    onChange={(e) => {
+                      setManagerName(e.target.value);
+                      setShowManagerSuggestions(true);
+                    }}
+                    onFocus={() => setShowManagerSuggestions(true)}
+                    placeholder="যেমন: আব্দুর রহিম"
+                    className={`w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-[#1565C0] ${
+                      isWorkDetailsFrozen ? 'bg-slate-100/90 text-slate-600 cursor-not-allowed font-medium' : ''
+                    }`}
+                  />
+                </div>
+                {!isWorkDetailsFrozen && showManagerSuggestions && managerSuggestions.length > 0 && (
+                  <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-36 overflow-y-auto divide-y divide-slate-100">
+                    {managerSuggestions.map((item, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          setManagerName(item);
+                          setShowManagerSuggestions(false);
+                        }}
+                        className="w-full text-left px-2.5 py-1.5 text-xs text-slate-700 hover:bg-blue-50 active:bg-blue-100 flex items-center justify-between transition-colors"
+                      >
+                        <span>{item}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* গাড়ির নাম */}
+              <div className="space-y-1 relative" ref={vehicleContainerRef}>
+                <label className="text-[11px] font-semibold text-slate-600 flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <Tag size={12} className="text-[#1565C0]" />
+                    <span>গাড়ির নাম</span>
+                  </span>
+                  {isWorkDetailsFrozen && <Lock size={11} className="text-slate-400" />}
+                </label>
+                <div className="relative flex items-center">
+                  <input
+                    type="text"
+                    disabled={isWorkDetailsFrozen}
+                    value={vehicleName}
+                    onChange={(e) => {
+                      setVehicleName(e.target.value);
+                      setShowVehicleSuggestions(true);
+                    }}
+                    onFocus={() => setShowVehicleSuggestions(true)}
+                    placeholder="যেমন: ট্রাফি / ট্রাক"
+                    className={`w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-[#1565C0] ${
+                      isWorkDetailsFrozen ? 'bg-slate-100/90 text-slate-600 cursor-not-allowed font-medium' : ''
+                    }`}
+                  />
+                </div>
+                {!isWorkDetailsFrozen && showVehicleSuggestions && vehicleSuggestions.length > 0 && (
+                  <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-36 overflow-y-auto divide-y divide-slate-100">
+                    {vehicleSuggestions.map((item, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          setVehicleName(item);
+                          setShowVehicleSuggestions(false);
+                        }}
+                        className="w-full text-left px-2.5 py-1.5 text-xs text-slate-700 hover:bg-blue-50 active:bg-blue-100 flex items-center justify-between transition-colors"
+                      >
+                        <span>{item}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Live Concatenated Work Details Preview Box */}
+            <div className="pt-1 border-t border-slate-200/60">
+              <div className="text-[11px] font-bold text-blue-900 mb-1 flex items-center justify-between">
+                <span>একত্রিত কাজের বিবরণী (Work Details Preview):</span>
+                <span className="text-[10px] text-slate-400 font-normal">‘|’ চিহ্ন দ্বারা যুক্ত</span>
+              </div>
+              <div className="p-2.5 bg-blue-50/90 border border-blue-200 rounded-lg text-xs font-semibold text-blue-900 break-words min-h-[38px] flex items-center">
+                {concatenatedWorkDetails || (
+                  <span className="text-slate-400 font-normal italic">
+                    ইনপুট লেখার সাথে সাথে সব তথ্য এখানে যুক্ত হয়ে প্রদর্শিত হবে
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
           {/* Customer Name */}
           <div className="space-y-1 relative" ref={nameContainerRef}>
             <label className="text-xs font-medium text-slate-600 flex items-center justify-between">
@@ -549,7 +916,7 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
                 }}
                 placeholder="যেমন: আব্দুর রহিম"
                 className={`w-full bg-[#F8FAFC] border border-slate-300 rounded-xl pl-9 pr-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-[#1565C0] ${
-                  isNameFrozen ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''
+                  isNameFrozen ? 'bg-slate-100/90 text-slate-600 cursor-not-allowed font-medium' : ''
                 }`}
               />
             </div>
@@ -629,7 +996,7 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
                 onChange={(e) => setMobile(e.target.value)}
                 placeholder="০১৭XXXXXXXX"
                 className={`w-full bg-[#F8FAFC] border border-slate-300 rounded-xl pl-9 pr-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-[#1565C0] ${
-                  isMobileFrozen ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''
+                  isMobileFrozen ? 'bg-slate-100/90 text-slate-600 cursor-not-allowed font-medium' : ''
                 }`}
               />
             </div>
@@ -654,7 +1021,7 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
                 }}
                 placeholder="ঠিকানা..."
                 className={`w-full bg-[#F8FAFC] border border-slate-300 rounded-xl pl-9 pr-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-[#1565C0] ${
-                  isAddressFrozen ? 'bg-slate-100 text-slate-500 cursor-not-allowed' : ''
+                  isAddressFrozen ? 'bg-slate-100/90 text-slate-600 cursor-not-allowed font-medium' : ''
                 }`}
               />
             </div>
@@ -814,7 +1181,8 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
           <div className="space-y-1">
             <label className="text-xs font-medium text-slate-600">{stmLabel}</label>
             <textarea
-              rows={2}
+              id="input-main-stm"
+              rows={3}
               value={stm}
               onChange={(e) => setStm(e.target.value)}
               placeholder={
@@ -826,7 +1194,7 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
                   ? 'Gg(2023-05-23 to 2025-05-23)+Gg(...)'
                   : '1+2+1'
               }
-              className={`w-full bg-[#F8FAFC] border rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none transition-colors resize-y min-h-[48px] ${
+              className={`w-full bg-[#F8FAFC] border rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none transition-colors resize-y min-h-[72px] ${
                 calculation.errorMessage
                   ? 'border-red-400 focus:border-red-500 bg-red-50/40 text-red-900'
                   : 'border-slate-300 focus:border-[#00796B]'
@@ -894,25 +1262,27 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
 
           {/* Additional Bill */}
           <div className="space-y-1">
-            <label className="text-xs font-medium text-slate-600">অতিরিক্ত বিলের তথ্য</label>
+            <label className="text-xs font-medium text-slate-600">অতিরিক্ত বিলের তথ্য (STM)</label>
             <textarea
-              rows={2}
+              id="input-bill-stm"
+              rows={3}
               value={billStm}
               onChange={(e) => setBillStm(e.target.value)}
               placeholder="যেমন: ১০০+৫০"
-              className="w-full bg-[#F8FAFC] border border-slate-300 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-[#6A1B9A] resize-y min-h-[48px]"
+              className="w-full bg-[#F8FAFC] border border-slate-300 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-[#6A1B9A] resize-y min-h-[70px]"
             />
           </div>
 
           {/* Paid Amount */}
           <div className="space-y-1">
-            <label className="text-xs font-medium text-slate-600">টাকা পরিশোধের বিবরণ</label>
+            <label className="text-xs font-medium text-slate-600">টাকা পরিশোধের বিবরণ (STM)</label>
             <textarea
-              rows={2}
+              id="input-paid-stm"
+              rows={3}
               value={paidStm}
               onChange={(e) => setPaidStm(e.target.value)}
               placeholder="যেমন: ৫০০+২০০"
-              className="w-full bg-[#F8FAFC] border border-slate-300 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-[#2E7D32] resize-y min-h-[48px]"
+              className="w-full bg-[#F8FAFC] border border-slate-300 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-[#2E7D32] resize-y min-h-[70px]"
             />
           </div>
 
@@ -936,6 +1306,7 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
 
           {/* Final Due Surface */}
           <div
+            id="final-due-surface"
             className={`p-3.5 rounded-2xl border flex items-center justify-between transition-colors ${
               due > 0
                 ? 'bg-[#FFFFEBEE] border-red-300 text-[#C62828]'
@@ -949,6 +1320,133 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
             <span className="text-base font-extrabold">
               ৳ {Utils.toCleanString(due)}
             </span>
+          </div>
+
+          {/* Show / Hide Toggle Button for Additional 6 Financial Columns */}
+          <div className="pt-1.5">
+            <button
+              type="button"
+              id="toggle-extra-fields-btn"
+              onClick={() => setShowExtraFields(prev => !prev)}
+              className="w-full flex items-center justify-between px-3.5 py-2.5 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 transition-colors shadow-2xs"
+            >
+              <div className="flex items-center space-x-2">
+                <SlidersHorizontal size={15} className="text-[#0D47A1] shrink-0" />
+                <span>অন্যান্য হিসাব (খরচ, লাভ, ক্যাশআউট, ক্রেডিট)</span>
+              </div>
+              <div className="flex items-center space-x-1 text-slate-500 font-semibold">
+                <span>{showExtraFields ? 'লুকান' : 'দেখান'}</span>
+                {showExtraFields ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              </div>
+            </button>
+
+            {/* Expandable 6 Column Input Fields */}
+            {showExtraFields && (
+              <div
+                id="extra-financial-fields"
+                className="mt-3 p-3.5 bg-slate-50/90 border border-slate-200 rounded-2xl space-y-3.5 shadow-xs transition-all duration-200"
+              >
+                {/* 1. Spend Section: STM (editable) & Spend Amount (readonly) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-700">
+                      খরচের বিবরণ (spendStm)
+                    </label>
+                    <textarea
+                      id="input-spend-stm"
+                      rows={3}
+                      value={spendStm}
+                      onChange={(e) => setSpendStm(e.target.value)}
+                      placeholder="যেমন: ২০০+১০০"
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#00796B] resize-y min-h-[70px]"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-slate-700">
+                        খরচ / Spend (৳)
+                      </label>
+                      <span className="text-[10px] text-slate-400 font-medium">(স্বয়ংক্রিয়)</span>
+                    </div>
+                    <input
+                      type="text"
+                      readOnly
+                      id="input-spend-amount"
+                      value={`৳ ${Utils.toCleanString(spend)}`}
+                      className="w-full bg-slate-100/90 border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold text-slate-800 cursor-not-allowed select-none"
+                    />
+                  </div>
+                </div>
+
+                {/* 2. Profit Section (readonly) */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-slate-700">
+                      লাভ / Profit (৳)
+                    </label>
+                    <span className="text-[10px] text-slate-400 font-medium">(মোট বিল - খরচ)</span>
+                  </div>
+                  <input
+                    type="text"
+                    readOnly
+                    id="input-profit-amount"
+                    value={`৳ ${Utils.toCleanString(profit)}`}
+                    className="w-full bg-slate-100/90 border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold text-emerald-800 cursor-not-allowed select-none"
+                  />
+                </div>
+
+                {/* 3. Cashout Section: STM (editable) & Cashout Amount (readonly) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-700">
+                      ক্যাশআউট বিবরণ (cashoutStm)
+                    </label>
+                    <textarea
+                      id="input-cashout-stm"
+                      rows={3}
+                      value={cashoutStm}
+                      onChange={(e) => setCashoutStm(e.target.value)}
+                      placeholder="যেমন: ১০০০+৫০০"
+                      className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-sm text-slate-800 focus:outline-none focus:border-[#00796B] resize-y min-h-[70px]"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-slate-700">
+                        ক্যাশআউট / Cashout (৳)
+                      </label>
+                      <span className="text-[10px] text-slate-400 font-medium">(স্বয়ংক্রিয়)</span>
+                    </div>
+                    <input
+                      type="text"
+                      readOnly
+                      id="input-cashout-amount"
+                      value={`৳ ${Utils.toCleanString(cashout)}`}
+                      className="w-full bg-slate-100/90 border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold text-slate-800 cursor-not-allowed select-none"
+                    />
+                  </div>
+                </div>
+
+                {/* 4. Credit Section (readonly) */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-slate-700">
+                      ক্রেডিট / Credit (৳)
+                    </label>
+                    <span className="text-[10px] text-slate-400 font-medium">(জমা - ক্যাশআউট)</span>
+                  </div>
+                  <input
+                    type="text"
+                    readOnly
+                    id="input-credit-amount"
+                    value={`৳ ${Utils.toCleanString(credit)}`}
+                    className="w-full bg-slate-100/90 border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold text-blue-800 cursor-not-allowed select-none"
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

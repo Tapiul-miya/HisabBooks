@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Edit2, Trash2, AlertTriangle } from 'lucide-react';
+import { Edit2, Trash2, AlertTriangle, Phone, MapPin } from 'lucide-react';
 import { VehicleHisab, GroupByMode } from '../types';
 import { Utils } from '../util/utils';
 
@@ -44,17 +44,39 @@ export const GroupChildItemRow: React.FC<GroupChildItemRowProps> = ({
 
   return (
     <div
-      className={`rounded-xl border p-2.5 shadow-2xs transition-all duration-300 ${
+      className={`w-full rounded-xl border p-2.5 sm:p-3 shadow-2xs transition-all duration-300 ${
         isHighlighted
           ? 'animate-blur-float ring-4 ring-blue-400 bg-blue-50/70 border-blue-300'
-          : 'bg-[#F8FAFC] border-[#E2E8F0]'
+          : 'bg-gradient-to-b from-[#FFFFFF] via-[#F8FAFC] to-[#EDF2F7] border-[#CBD5E1]'
       }`}
     >
       <div className="flex items-center justify-between mb-1">
-        <span className="text-xs font-bold text-slate-700">
-          {childTitleText}
-        </span>
-        <div className="flex items-center space-x-1">
+        <div>
+          <span className="text-xs font-bold text-slate-700">
+            {childTitleText}
+          </span>
+          {mode === GroupByMode.BY_DATE_WORK && (item.mobile || item.address) && (
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 mt-0.5 text-[11px] text-[#455A64]">
+              {item.mobile && (
+                <a
+                  href={`tel:${item.mobile}`}
+                  className="flex items-center space-x-1 text-emerald-700 hover:text-emerald-800 hover:underline active:opacity-75 font-medium cursor-pointer"
+                  title="সরাসরি কল করুন"
+                >
+                  <Phone size={10} className="text-emerald-600 shrink-0" />
+                  <span>{item.mobile}</span>
+                </a>
+              )}
+              {item.address && (
+                <span className="flex items-center space-x-1 text-slate-500">
+                  <MapPin size={10} className="text-slate-400 shrink-0" />
+                  <span>{item.address}</span>
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="flex items-center space-x-1 shrink-0">
           <button
             onClick={() => onEdit(item)}
             className="p-1 text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
@@ -82,17 +104,22 @@ export const GroupChildItemRow: React.FC<GroupChildItemRowProps> = ({
         </div>
       )}
 
-      <div className="text-xs font-medium text-slate-800 mt-1">
-        বিল: ৳{Utils.toCleanString(item.bill)} | জমা: ৳{Utils.toCleanString(item.paid)}
+      <div className="flex items-center justify-between text-xs font-medium text-slate-800 mt-1">
+        <span>
+          বিল: <span className="font-bold text-slate-900">৳{Utils.toCleanString(item.bill)}</span>
+        </span>
+        <span className="text-[#15803D]">
+          জমা: <span className="font-bold text-[#15803D]">৳{Utils.toCleanString(item.paid)}</span>
+        </span>
       </div>
 
-      <div className="text-right mt-0.5">
+      <div className="text-right mt-1">
         {item.due > 0 ? (
-          <span className="text-xs font-bold text-red-600">
+          <span className="text-xs font-bold text-red-600 bg-red-50/80 px-1.5 py-0.5 rounded whitespace-nowrap inline-block">
             বকেয়া: ৳{Utils.toCleanString(item.due)}
           </span>
         ) : (
-          <span className="text-xs font-bold text-emerald-600">
+          <span className="text-xs font-bold text-emerald-600 bg-emerald-50/80 px-1.5 py-0.5 rounded whitespace-nowrap inline-block">
             পরিশোধিত: ৳{Utils.toCleanString(item.due)}
           </span>
         )}

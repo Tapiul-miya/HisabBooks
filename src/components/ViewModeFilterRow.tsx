@@ -17,6 +17,17 @@ export const ViewModeFilterRow: React.FC<ViewModeFilterRowProps> = ({
   onModeSelected,
   onWorkDetailsFilterChange
 }) => {
+  const uniqueWorkDetailsOptions = React.useMemo(() => {
+    const set = new Set<string>();
+    (workDetailsOptions || []).forEach((work) => {
+      if (work && work.trim()) {
+        const normalized = work.split('|').map(s => s.trim()).filter(Boolean).join(' | ');
+        if (normalized) set.add(normalized);
+      }
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'bn'));
+  }, [workDetailsOptions]);
+
   return (
     <div className="px-3.5 py-1 flex items-center gap-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden whitespace-nowrap">
       {/* 1. workDetails dropdown filter */}
@@ -32,7 +43,7 @@ export const ViewModeFilterRow: React.FC<ViewModeFilterRowProps> = ({
           }`}
         >
           <option value="">সকল কাজ</option>
-          {workDetailsOptions.map((work) => (
+          {uniqueWorkDetailsOptions.map((work) => (
             <option key={work} value={work}>
               {work}
             </option>

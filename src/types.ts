@@ -21,6 +21,12 @@ export interface VehicleHisab {
   paidStm: string;
   paid: number;
   due: number;
+  spendStm?: string;
+  spend?: number;
+  profit?: number;
+  cashoutStm?: string;
+  cashout?: number;
+  credit?: number;
   optional: string;
 
   // Window Function (Group Sums) calculated fields
