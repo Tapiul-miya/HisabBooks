@@ -112,12 +112,18 @@ const INITIAL_SAMPLE_DATA: Omit<VehicleHisab, 'id'>[] = [
   }
 ];
 
+let cachedDbBinary: Uint8Array | null = null;
+
 // Persistent SQLite IndexedDB Storage Driver
 async function getStoredDbBinary(): Promise<Uint8Array | null> {
+  if (cachedDbBinary && cachedDbBinary.length > 0) {
+    return cachedDbBinary;
+  }
+
   return new Promise((resolve) => {
     try {
       if (typeof indexedDB === 'undefined') {
-        resolve(null);
+        resolve(cachedDbBinary);
         return;
       }
       const request = indexedDB.open('HisabBookSqliteStorage', 1);
@@ -139,32 +145,36 @@ async function getStoredDbBinary(): Promise<Uint8Array | null> {
           const getReq = store.get(DB_FILE_KEY);
           getReq.onsuccess = () => {
             const result = getReq.result || null;
+            if (result) {
+              cachedDbBinary = result;
+            }
             try { db.close(); } catch {}
-            resolve(result);
+            resolve(result || cachedDbBinary);
           };
           getReq.onerror = () => {
             try { db.close(); } catch {}
-            resolve(null);
+            resolve(cachedDbBinary);
           };
           tx.onabort = () => {
             try { db.close(); } catch {}
-            resolve(null);
+            resolve(cachedDbBinary);
           };
         } catch {
           try { db.close(); } catch {}
-          resolve(null);
+          resolve(cachedDbBinary);
         }
       };
-      request.onerror = () => resolve(null);
-      request.onblocked = () => resolve(null);
+      request.onerror = () => resolve(cachedDbBinary);
+      request.onblocked = () => resolve(cachedDbBinary);
     } catch {
-      resolve(null);
+      resolve(cachedDbBinary);
     }
   });
 }
 
 async function saveDbBinary(data: Uint8Array): Promise<void> {
-  return new Promise((resolve, reject) => {
+  cachedDbBinary = data;
+  return new Promise((resolve) => {
     try {
       if (typeof indexedDB === 'undefined') {
         resolve();
@@ -193,30 +203,20 @@ async function saveDbBinary(data: Uint8Array): Promise<void> {
           };
           tx.onerror = () => {
             try { db.close(); } catch {}
-            // Gracefully resolve to prevent breaking app flow on IDB errors
-            console.warn('IndexedDB save transaction error:', tx.error);
             resolve();
           };
           tx.onabort = () => {
             try { db.close(); } catch {}
             resolve();
           };
-        } catch (txErr) {
+        } catch {
           try { db.close(); } catch {}
-          console.warn('Failed to start transaction on IndexedDB:', txErr);
           resolve();
         }
       };
-      request.onerror = () => {
-        console.warn('IndexedDB open error during save:', request.error);
-        resolve();
-      };
-      request.onblocked = () => {
-        console.warn('IndexedDB open blocked during save');
-        resolve();
-      };
-    } catch (err) {
-      console.warn('saveDbBinary exception:', err);
+      request.onerror = () => resolve();
+      request.onblocked = () => resolve();
+    } catch {
       resolve();
     }
   });
