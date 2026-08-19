@@ -2,11 +2,14 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
   getAuth,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   GoogleAuthProvider,
   onAuthStateChanged,
   User,
   signOut
 } from 'firebase/auth';
+import { Capacitor } from '@capacitor/core';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
@@ -23,6 +26,21 @@ export const initAuth = (
   onAuthSuccess?: (user: User, token: string) => void,
   onAuthFailure?: () => void
 ) => {
+  // Check for any pending redirect result when app opens on mobile device
+  getRedirectResult(auth)
+    .then((result) => {
+      if (result) {
+        const credential = GoogleAuthProvider.credentialFromResult(result);
+        if (credential?.accessToken) {
+          cachedAccessToken = credential.accessToken;
+          if (onAuthSuccess) onAuthSuccess(result.user, cachedAccessToken);
+        }
+      }
+    })
+    .catch((err) => {
+      console.warn('Redirect auth check warning:', err);
+    });
+
   return onAuthStateChanged(auth, async (user: User | null) => {
     if (user) {
       if (cachedAccessToken) {
@@ -41,7 +59,24 @@ export const initAuth = (
 export const googleSignIn = async (): Promise<{ user: User; accessToken: string } | null> => {
   try {
     isSigningIn = true;
-    const result = await signInWithPopup(auth, provider);
+    let result;
+    try {
+      result = await signInWithPopup(auth, provider);
+    } catch (popupErr: unknown) {
+      const pErr = popupErr as { code?: string; message?: string };
+      // On native platform or if popup is blocked/unsupported, fall back to redirect
+      if (
+        Capacitor.isNativePlatform() ||
+        pErr?.code === 'auth/popup-blocked' ||
+        pErr?.code === 'auth/operation-not-supported-in-this-environment'
+      ) {
+        console.warn('Popup not supported/blocked, falling back to signInWithRedirect...');
+        await signInWithRedirect(auth, provider);
+        return null;
+      }
+      throw popupErr;
+    }
+
     const credential = GoogleAuthProvider.credentialFromResult(result);
     if (!credential?.accessToken) {
       throw new Error('গুগল ড্রাইভ অ্যাক্সেস টোকেন পাওয়া যায়নি। অনুগ্রহ করে আবার চেষ্টা করুন।');
@@ -54,10 +89,10 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
     console.error('Google Sign in error:', authErr);
 
     if (authErr?.code === 'auth/popup-closed-by-user' || authErr?.code === 'auth/cancelled-popup-request') {
-      throw new Error('সাইন-ইন পপআপ উইন্ডো বন্ধ করা হয়েছে। আবার চেষ্টা করুন।');
+      throw new Error('সাইন-ইন উইন্ডো বন্ধ করা হয়েছে। আবার চেষ্টা করুন।');
     }
     if (authErr?.code === 'auth/popup-blocked') {
-      throw new Error('ব্রাউজারে পপআপ ব্লক করা আছে। অনুগ্রহ করে পপআপ অনুমোদিত (Allow) করে আবার চেষ্টা করুন।');
+      throw new Error('পপআপ ব্লক করা আছে। আবার চেষ্টা করুন।');
     }
 
     throw error;
