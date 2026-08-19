@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Edit2, Trash2, AlertTriangle, Phone, MapPin } from 'lucide-react';
-import { VehicleHisab, GroupByMode } from '../types';
+import { Edit2, Trash2, AlertTriangle, Phone, MapPin, Filter } from 'lucide-react';
+import { VehicleHisab, GroupByMode, CustomerFilter } from '../types';
 import { Utils } from '../util/utils';
 
 interface GroupChildItemRowProps {
@@ -9,6 +9,7 @@ interface GroupChildItemRowProps {
   isHighlighted?: boolean;
   onDelete: (id: number) => void;
   onEdit: (item: VehicleHisab) => void;
+  onCustomerClick?: (filter: CustomerFilter) => void;
 }
 
 export const GroupChildItemRow: React.FC<GroupChildItemRowProps> = ({
@@ -16,7 +17,8 @@ export const GroupChildItemRow: React.FC<GroupChildItemRowProps> = ({
   mode,
   isHighlighted,
   onDelete,
-  onEdit
+  onEdit,
+  onCustomerClick
 }) => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
@@ -37,11 +39,6 @@ export const GroupChildItemRow: React.FC<GroupChildItemRowProps> = ({
     }
   };
 
-  const childTitleText =
-    mode === GroupByMode.BY_DATE_WORK
-      ? item.name ? `👤 ${item.name}` : '👤 নাম ছাড়া'
-      : `📅 ${item.date}`;
-
   return (
     <div
       className={`w-full rounded-xl border p-2.5 sm:p-3 shadow-2xs transition-all duration-300 ${
@@ -52,9 +49,26 @@ export const GroupChildItemRow: React.FC<GroupChildItemRowProps> = ({
     >
       <div className="flex items-center justify-between mb-1">
         <div>
-          <span className="text-xs font-bold text-slate-700">
-            {childTitleText}
-          </span>
+          {mode === GroupByMode.BY_DATE_WORK && item.name ? (
+            <button
+              type="button"
+              onClick={() => onCustomerClick?.({
+                name: item.name,
+                mobile: item.mobile,
+                address: item.address,
+                hisabType: item.hisabType
+              })}
+              className="inline-flex items-center space-x-1 text-xs font-bold text-slate-800 hover:text-emerald-800 hover:underline cursor-pointer group"
+              title="একই নাম, মোবাইল, ঠিকানা ও হিসাবের ধরন অনুযায়ী ফিল্টার করুন"
+            >
+              <span>👤 {item.name}</span>
+              <Filter size={10} className="text-slate-400 group-hover:text-emerald-700 transition-colors" />
+            </button>
+          ) : (
+            <span className="text-xs font-bold text-slate-700">
+              {mode === GroupByMode.BY_DATE_WORK ? '👤 নাম ছাড়া' : `📅 ${item.date}`}
+            </span>
+          )}
           {mode === GroupByMode.BY_DATE_WORK && (item.mobile || item.address) && (
             <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 mt-0.5 text-[11px] text-[#455A64]">
               {item.mobile && (

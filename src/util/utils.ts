@@ -609,4 +609,17 @@ export namespace Utils {
 
     return false;
   }
+
+  export function getHisabTypeLabel(typeKey: string): string {
+    const k = (typeKey || '').toLowerCase();
+    if (k.includes('bigha')) return 'জমির হিসাব (বিঘা)';
+    if (k.includes('trip')) return 'ট্রিপ হিসাব';
+    if (k.includes('hour')) return 'ঘণ্টা হিসাব';
+    if (k.includes('monthly') || k.includes('month')) return 'মাসিক হিসাব';
+    if (k.includes('contract')) return 'চুক্তি হিসাব';
+    if (k.includes('fuel')) return 'ফুয়েল / জ্বালানি';
+    if (k.includes('rent')) return 'ভাড়া';
+    if (k.includes('other')) return 'অন্যান্য';
+    return typeKey || 'সাধারণ';
+  }
 }

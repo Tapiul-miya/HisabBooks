@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { GroupByMode, VehicleHisab, GroupedHisab, getGroupKey, DatabaseTotals } from './types';
+import { GroupByMode, VehicleHisab, GroupedHisab, getGroupKey, DatabaseTotals, CustomerFilter } from './types';
 import { HisabStorage } from './data/storage';
 import { HisabListScreen } from './screens/HisabListScreen';
 import { AddHisabScreen } from './screens/AddHisabScreen';
@@ -7,6 +7,7 @@ import { PdfReportModal } from './components/PdfReportModal';
 import { AboutAppModal } from './components/AboutAppModal';
 import { BackupRestoreModal } from './components/BackupRestoreModal';
 import { SplashScreen } from './components/SplashScreen';
+import { triggerAutoCloudBackup } from './services/googleDriveStorage';
 
 type ActiveScreen = 'list' | 'add';
 
@@ -20,6 +21,7 @@ export const App: React.FC = () => {
   const [selectedWorkDetails, setSelectedWorkDetails] = useState<string>('');
   const [workDetailsOptions, setWorkDetailsOptions] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [customerFilter, setCustomerFilter] = useState<CustomerFilter | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   const [groupedList, setGroupedList] = useState<GroupedHisab[]>([]);
@@ -59,14 +61,15 @@ export const App: React.FC = () => {
         searchQuery,
         null,
         selectedGroupByMode,
-        selectedWorkDetails
+        selectedWorkDetails,
+        customerFilter
       );
       setGroupedList(groups);
       setDbTotals(totals);
     } catch (err) {
       console.error('Error fetching data from IndexedDB:', err);
     }
-  }, [searchQuery, selectedGroupByMode, selectedWorkDetails]);
+  }, [searchQuery, selectedGroupByMode, selectedWorkDetails, customerFilter]);
 
   useEffect(() => {
     refreshData();
@@ -85,6 +88,25 @@ export const App: React.FC = () => {
   const handleModeSelected = (mode: GroupByMode) => {
     setSelectedGroupByMode(mode);
     setExpandedGroups(new Set());
+  };
+
+  const handleCustomerClick = (filter: CustomerFilter) => {
+    setCustomerFilter((prev) => {
+      if (
+        prev &&
+        (prev.name || '').trim().toLowerCase() === (filter.name || '').trim().toLowerCase() &&
+        (prev.mobile || '').trim() === (filter.mobile || '').trim() &&
+        (prev.address || '').trim().toLowerCase() === (filter.address || '').trim().toLowerCase() &&
+        (prev.hisabType || '').trim().toLowerCase() === (filter.hisabType || '').trim().toLowerCase()
+      ) {
+        return null; // Toggle off if clicked again
+      }
+      return filter;
+    });
+  };
+
+  const handleClearCustomerFilter = () => {
+    setCustomerFilter(null);
   };
 
   const handleAddNewClick = () => {
@@ -129,7 +151,8 @@ export const App: React.FC = () => {
       searchQuery,
       null,
       selectedGroupByMode,
-      selectedWorkDetails
+      selectedWorkDetails,
+      customerFilter
     );
     setGroupedList(list);
 
@@ -155,6 +178,8 @@ export const App: React.FC = () => {
     }
 
     setCurrentScreen('list');
+    // Trigger background auto backup to Google Drive if active
+    triggerAutoCloudBackup().catch(() => {});
   };
 
   return (
@@ -169,10 +194,13 @@ export const App: React.FC = () => {
           expandedGroups={expandedGroups}
           highlightedGroupKey={highlightedGroupKey}
           highlightedItemId={highlightedItemId}
+          customerFilter={customerFilter}
           searchQuery={searchQuery}
           onSearchQueryChange={setSearchQuery}
           onGroupByModeSelected={handleModeSelected}
           onWorkDetailsFilterChange={setSelectedWorkDetails}
+          onCustomerClick={handleCustomerClick}
+          onClearCustomerFilter={handleClearCustomerFilter}
           onToggleGroup={handleToggleGroup}
           onAddNewClick={handleAddNewClick}
           onEditClick={handleEditClick}

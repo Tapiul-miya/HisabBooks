@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Copy, ChevronDown, ChevronUp, Phone, MapPin, FileText, Pencil } from 'lucide-react';
-import { GroupedHisab, GroupByMode, VehicleHisab } from '../types';
+import { Copy, ChevronDown, ChevronUp, Phone, MapPin, FileText, Pencil, Filter } from 'lucide-react';
+import { GroupedHisab, GroupByMode, VehicleHisab, CustomerFilter } from '../types';
 import { GroupChildItemRow } from './GroupChildItemRow';
 import { Utils } from '../util/utils';
 import { SingleGroupPdfPreviewModal } from './SingleGroupPdfPreviewModal';
@@ -12,10 +12,12 @@ interface GroupSummaryCardProps {
   expanded: boolean;
   isHighlighted?: boolean;
   highlightedItemId?: number | null;
+  activeCustomerFilter?: CustomerFilter | null;
   onExpandToggle: () => void;
   onDeleteHisab: (id: number) => void;
   onEditClick: (item: VehicleHisab) => void;
   onCopyClick: (grouped: GroupedHisab) => void;
+  onCustomerClick?: (filter: CustomerFilter) => void;
   onReloadData?: () => void;
 }
 
@@ -25,10 +27,12 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
   expanded,
   isHighlighted,
   highlightedItemId,
+  activeCustomerFilter,
   onExpandToggle,
   onDeleteHisab,
   onEditClick,
   onCopyClick,
+  onCustomerClick,
   onReloadData
 }) => {
   const [showPdfPreview, setShowPdfPreview] = useState(false);
@@ -38,6 +42,14 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
   const borderColor = isDue ? 'border-[#EF5350]' : 'border-[#66BB6A]';
 
   const shouldHighlightParent = isHighlighted && groupedHisab.items.length === 1;
+
+  const isCustomerFilterActive = Boolean(
+    activeCustomerFilter &&
+    (activeCustomerFilter.name || '').trim().toLowerCase() === (groupedHisab.name || '').trim().toLowerCase() &&
+    (activeCustomerFilter.mobile || '').trim() === (groupedHisab.mobile || '').trim() &&
+    (activeCustomerFilter.address || '').trim().toLowerCase() === (groupedHisab.address || '').trim().toLowerCase() &&
+    (activeCustomerFilter.hisabType || '').trim().toLowerCase() === (groupedHisab.hisabType || '').trim().toLowerCase()
+  );
 
   const type = groupedHisab.hisabType.toLowerCase();
   let qtyText = `পরিমাণ: ${groupedHisab.totalQty}`;
@@ -52,16 +64,7 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
   }
 
   const getHisabTypeLabel = (typeKey: string) => {
-    const k = (typeKey || '').toLowerCase();
-    if (k.includes('bigha')) return 'জমির হিসাব (বিঘা)';
-    if (k.includes('trip')) return 'ট্রিপ হিসাব';
-    if (k.includes('hour')) return 'ঘণ্টা হিসাব';
-    if (k.includes('monthly') || k.includes('month')) return 'মাসিক হিসাব';
-    if (k.includes('contract')) return 'চুক্তি হিসাব';
-    if (k.includes('fuel')) return 'ফুয়েল / জ্বালানি';
-    if (k.includes('rent')) return 'ভাড়া';
-    if (k.includes('other')) return 'অন্যান্য';
-    return typeKey || 'সাধারণ';
+    return Utils.getHisabTypeLabel(typeKey);
   };
 
   const cardTitle =
@@ -74,6 +77,8 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
       <div
         className={`w-full bg-gradient-to-b from-[#F8FAFC] via-[#F1F5F9] to-[#E2E8F0] rounded-xl border-2 ${borderColor} shadow-xs overflow-hidden transition-all duration-300 ${
           shouldHighlightParent ? 'animate-blur-float ring-4 ring-blue-400 bg-blue-50/50' : ''
+        } ${
+          isCustomerFilterActive ? 'ring-3 ring-emerald-500/90 shadow-md' : ''
         }`}
       >
         <div
@@ -82,9 +87,40 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
         >
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
-              <h3 className="text-base font-bold text-[#0D1B2A] leading-snug break-words">
-                {cardTitle}
-              </h3>
+              {mode === GroupByMode.BY_USER_DETAILS && groupedHisab.name.trim() ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCustomerClick?.({
+                      name: groupedHisab.name,
+                      mobile: groupedHisab.mobile,
+                      address: groupedHisab.address,
+                      hisabType: groupedHisab.hisabType
+                    });
+                  }}
+                  className={`inline-flex items-center space-x-1.5 px-2 py-0.5 -ml-1 rounded-lg text-base font-bold text-left transition-all duration-150 group cursor-pointer ${
+                    isCustomerFilterActive
+                      ? 'bg-emerald-700 text-white shadow-xs'
+                      : 'text-[#0D1B2A] hover:text-emerald-800 hover:bg-emerald-100/70 active:scale-98'
+                  }`}
+                  title="একই নাম, মোবাইল, ঠিকানা ও হিসাবের ধরন অনুযায়ী ফিল্টার করতে ক্লিক করুন"
+                >
+                  <span className="leading-snug break-words">👤 {groupedHisab.name}</span>
+                  <Filter
+                    size={13}
+                    className={`shrink-0 transition-opacity ${
+                      isCustomerFilterActive
+                        ? 'text-white opacity-100'
+                        : 'text-slate-400 opacity-60 group-hover:opacity-100 group-hover:text-emerald-700'
+                    }`}
+                  />
+                </button>
+              ) : (
+                <h3 className="text-base font-bold text-[#0D1B2A] leading-snug break-words">
+                  {cardTitle}
+                </h3>
+              )}
               {mode === GroupByMode.BY_USER_DETAILS && (
                 <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5 text-xs text-[#455A64]">
                   {groupedHisab.mobile && (
@@ -207,6 +243,7 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
                 isHighlighted={highlightedItemId === item.id}
                 onDelete={onDeleteHisab}
                 onEdit={onEditClick}
+                onCustomerClick={onCustomerClick}
               />
             ))}
           </div>

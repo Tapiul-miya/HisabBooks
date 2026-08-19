@@ -1,9 +1,46 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { X, Download, Upload, Database, CheckCircle, AlertCircle, FileSpreadsheet, FileCode, HardDrive, Trash2 } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  X,
+  Download,
+  Upload,
+  Database,
+  CheckCircle,
+  AlertCircle,
+  FileSpreadsheet,
+  FileCode,
+  HardDrive,
+  Trash2,
+  Cloud,
+  CloudUpload,
+  CloudDownload,
+  RefreshCw,
+  LogOut,
+  ShieldCheck,
+  Calendar,
+  Layers,
+  Sparkles
+} from 'lucide-react';
 import { HisabStorage } from '../data/storage';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
+import {
+  initAuth,
+  googleSignIn,
+  logoutGoogle,
+  getAccessToken
+} from '../services/googleAuth';
+import {
+  DriveBackupFile,
+  listDriveBackups,
+  uploadBackupToDrive,
+  downloadDriveBackup,
+  deleteDriveBackup,
+  isAutoBackupEnabled,
+  setAutoBackupEnabled,
+  getLastCloudBackupTime
+} from '../services/googleDriveStorage';
+import { User } from 'firebase/auth';
 
 const exportBackupFile = async (content: string, filename: string, mimeType: string) => {
   // 1. Android Native / Capacitor Platform
@@ -88,11 +125,25 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
   onClose,
   onDataRestored,
 }) => {
-  const [activeTab, setActiveTab] = useState<'export' | 'import' | 'clear'>('export');
+  const [activeTab, setActiveTab] = useState<'cloud' | 'export' | 'import' | 'clear'>('cloud');
   const [recordCount, setRecordCount] = useState<number>(0);
   const [importMode, setImportMode] = useState<'append' | 'replace'>('append');
   const [confirmClearText, setConfirmClearText] = useState('');
   
+  // Google Auth & Cloud State
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [autoBackup, setAutoBackup] = useState<boolean>(isAutoBackupEnabled());
+  const [cloudBackups, setCloudBackups] = useState<DriveBackupFile[]>([]);
+  const [isLoadingCloud, setIsLoadingCloud] = useState(false);
+  const [isCloudBackingUp, setIsCloudBackingUp] = useState(false);
+  const [lastCloudTime, setLastCloudTime] = useState<string | null>(getLastCloudBackupTime());
+
+  // Confirmations
+  const [pendingRestoreFile, setPendingRestoreFile] = useState<DriveBackupFile | null>(null);
+  const [pendingDeleteFile, setPendingDeleteFile] = useState<DriveBackupFile | null>(null);
+
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
@@ -101,16 +152,213 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    fetchCount();
-  }, []);
-
   const fetchCount = async () => {
     try {
       const count = await HisabStorage.getCount();
       setRecordCount(count);
     } catch {
       setRecordCount(0);
+    }
+  };
+
+  const loadDriveBackupsList = useCallback(async (tokenToUse?: string) => {
+    const token = tokenToUse || authToken || (await getAccessToken());
+    if (!token) return;
+
+    setIsLoadingCloud(true);
+    try {
+      const backups = await listDriveBackups(token);
+      setCloudBackups(backups);
+    } catch (err) {
+      console.warn('Failed to load drive backups:', err);
+    } finally {
+      setIsLoadingCloud(false);
+    }
+  }, [authToken]);
+
+  useEffect(() => {
+    fetchCount();
+
+    const unsubscribe = initAuth(
+      (user, token) => {
+        setCurrentUser(user);
+        setAuthToken(token);
+        loadDriveBackupsList(token);
+      },
+      () => {
+        setCurrentUser(null);
+        setAuthToken(null);
+        setCloudBackups([]);
+      }
+    );
+
+    return () => {
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
+      }
+    };
+  }, [loadDriveBackupsList]);
+
+  const handleGoogleLogin = async () => {
+    setIsLoggingIn(true);
+    setMessage(null);
+    try {
+      const res = await googleSignIn();
+      if (res) {
+        setCurrentUser(res.user);
+        setAuthToken(res.accessToken);
+        setMessage({
+          type: 'success',
+          text: `স্বাগতম ${res.user.displayName || 'ব্যবহারকারী'}! গুগল ড্রাইভ ক্লাউড স্টোরেজ সফলভাবে সংযুক্ত হয়েছে।`
+        });
+        await loadDriveBackupsList(res.accessToken);
+      }
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : 'গুগল সাইন ইনে ত্রুটি ঘটেছে';
+      setMessage({ type: 'error', text: errMsg });
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleGoogleLogout = async () => {
+    try {
+      await logoutGoogle();
+      setCurrentUser(null);
+      setAuthToken(null);
+      setCloudBackups([]);
+      setMessage({ type: 'success', text: 'গুগল অ্যাকাউন্ট থেকে লগআউট করা হয়েছে।' });
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : 'লগআউটে সমস্যা হয়েছে';
+      setMessage({ type: 'error', text: errMsg });
+    }
+  };
+
+  const handleToggleAutoBackup = (enabled: boolean) => {
+    setAutoBackup(enabled);
+    setAutoBackupEnabled(enabled);
+    if (enabled && authToken) {
+      setMessage({
+        type: 'success',
+        text: 'স্বয়ংক্রিয় ক্লাউড ব্যাকআপ সক্রিয় করা হয়েছে। প্রতিটি হিসাব পরিবর্তনের পর ডাটা ড্রাইভে সংরক্ষিত হবে।'
+      });
+    }
+  };
+
+  const handleCreateCloudBackup = async () => {
+    const token = authToken || (await getAccessToken());
+    if (!token) {
+      setMessage({ type: 'error', text: 'অনুগ্রহ করে প্রথমে গুগল অ্যাকাউন্ট দিয়ে সাইন ইন করুন।' });
+      return;
+    }
+
+    if (recordCount === 0) {
+      setMessage({ type: 'error', text: 'ডাটাবেসে কোনো হিসাব নেই। ব্যাকআপ নেওয়ার জন্য কিছু হিসাব যোগ করুন।' });
+      return;
+    }
+
+    setIsCloudBackingUp(true);
+    setMessage(null);
+    try {
+      const jsonStr = await HisabStorage.exportJSON();
+      const now = new Date();
+      const dateStr = now.toISOString().split('T')[0];
+      const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-');
+      const filename = `HisabBook_Backup_${dateStr}_${timeStr}.json`;
+
+      await uploadBackupToDrive(
+        token,
+        jsonStr,
+        filename,
+        'application/json',
+        recordCount
+      );
+
+      const timeNow = new Date().toLocaleString('bn-BD');
+      setLastCloudTime(new Date().toISOString());
+
+      setMessage({
+        type: 'success',
+        text: `সফলভাবে ${recordCount} টি হিসাবের ক্লাউড ব্যাকআপ গুগল ড্রাইভে সেভ করা হয়েছে!`
+      });
+
+      await loadDriveBackupsList(token);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : 'ক্লাউড ব্যাকআপে ত্রুটি ঘটেছে';
+      setMessage({ type: 'error', text: errMsg });
+    } finally {
+      setIsCloudBackingUp(false);
+    }
+  };
+
+  const handleConfirmRestoreCloud = async () => {
+    if (!pendingRestoreFile) return;
+
+    const token = authToken || (await getAccessToken());
+    if (!token) {
+      setMessage({ type: 'error', text: 'লগইন সেশন শেষ হয়ে গেছে। অনুগ্রহ করে আবার সাইন ইন করুন।' });
+      setPendingRestoreFile(null);
+      return;
+    }
+
+    setIsLoadingCloud(true);
+    setMessage(null);
+
+    try {
+      const content = await downloadDriveBackup(token, pendingRestoreFile.id);
+      const text = content.trim().replace(/^\uFEFF/, '');
+      if (!text) throw new Error('ক্লাউড ব্যাকআপ ফাইলটি খালি');
+
+      let resultCount = 0;
+      if (pendingRestoreFile.name.endsWith('.json') || text.startsWith('{') || text.startsWith('[')) {
+        const res = await HisabStorage.importJSON(text, importMode);
+        resultCount = res.count;
+      } else if (pendingRestoreFile.name.endsWith('.sql') || pendingRestoreFile.name.endsWith('.db') || text.toUpperCase().includes('INSERT')) {
+        const res = await HisabStorage.importSQL(text, importMode);
+        resultCount = res.count;
+      } else {
+        const res = await HisabStorage.importJSON(text, importMode);
+        resultCount = res.count;
+      }
+
+      await fetchCount();
+      onDataRestored();
+
+      setMessage({
+        type: 'success',
+        text: `গুগল ড্রাইভ থেকে সফলভাবে ${resultCount} টি হিসাব ডাটাবেসে রিস্টোর করা হয়েছে!`
+      });
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : 'ক্লাউড রিস্টোরে ত্রুটি ঘটেছে';
+      setMessage({ type: 'error', text: errMsg });
+    } finally {
+      setIsLoadingCloud(false);
+      setPendingRestoreFile(null);
+    }
+  };
+
+  const handleConfirmDeleteCloud = async () => {
+    if (!pendingDeleteFile) return;
+
+    const token = authToken || (await getAccessToken());
+    if (!token) return;
+
+    setIsLoadingCloud(true);
+    setMessage(null);
+
+    try {
+      await deleteDriveBackup(token, pendingDeleteFile.id);
+      setMessage({
+        type: 'success',
+        text: `ড্রাইভ থেকে ব্যাকআপ ফাইলটি সফলভাবে মুছে ফেলা হয়েছে।`
+      });
+      await loadDriveBackupsList(token);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : 'ফাইল মুছতে ব্যর্থ হয়েছে';
+      setMessage({ type: 'error', text: errMsg });
+    } finally {
+      setIsLoadingCloud(false);
+      setPendingDeleteFile(null);
     }
   };
 
@@ -235,7 +483,7 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
         text = text.trim().replace(/^\uFEFF/, '');
         if (!text) throw new Error('ফাইলটি খালি');
 
-        // Auto-detect base64 encoded text (recovery for files exported with base64)
+        // Auto-detect base64 encoded text
         if (!text.startsWith('{') && !text.startsWith('[') && !text.toUpperCase().includes('INSERT') && !text.includes(',')) {
           try {
             const decoded = atob(text);
@@ -245,14 +493,13 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
               text = utf8Decoded.trim().replace(/^\uFEFF/, '');
             }
           } catch {
-            // Proceed with raw text if not base64
+            // Proceed with raw text
           }
         }
 
         const fileName = file.name.toLowerCase();
         let resultCount = 0;
 
-        // Smart format detection with fallback logic
         let imported = false;
         if (fileName.endsWith('.json') || text.startsWith('{') || text.startsWith('[')) {
           try {
@@ -260,7 +507,7 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
             resultCount = res.count;
             imported = true;
           } catch {
-            // fallback below
+            // fallback
           }
         } else if (fileName.endsWith('.sql') || fileName.endsWith('.db') || text.toUpperCase().includes('INSERT INTO')) {
           try {
@@ -268,7 +515,7 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
             resultCount = res.count;
             imported = true;
           } catch {
-            // fallback below
+            // fallback
           }
         } else if (fileName.endsWith('.csv') || text.includes(',')) {
           try {
@@ -276,12 +523,11 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
             resultCount = res.count;
             imported = true;
           } catch {
-            // fallback below
+            // fallback
           }
         }
 
         if (!imported) {
-          // Fallbacks in order: JSON -> SQL -> CSV
           try {
             const res = await HisabStorage.importJSON(text, importMode);
             resultCount = res.count;
@@ -323,13 +569,16 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 animate-fade-in">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-2.5 sm:p-4 animate-fade-in">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-100 flex flex-col max-h-[92vh]">
         {/* Modal Header */}
-        <div className="bg-[#1B5E20] text-white px-4 py-3.5 flex items-center justify-between shrink-0">
+        <div className="bg-[#1B5E20] text-white px-4 py-3 flex items-center justify-between shrink-0 shadow-xs">
           <div className="flex items-center space-x-2">
-            <HardDrive size={20} className="text-emerald-300" />
-            <h2 className="font-bold text-base">ডাটা ব্যাকআপ ও রিস্টোর</h2>
+            <Cloud className="text-emerald-300" size={22} />
+            <div>
+              <h2 className="font-bold text-base leading-tight">ডাটা ব্যাকআপ ও ক্লাউড স্টোরেজ</h2>
+              <p className="text-[10px] text-emerald-100 font-medium">গুগল ড্রাইভ অটো ব্যাকআপ ও রিস্টোর</p>
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -340,50 +589,61 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
         </div>
 
         {/* Database Stats Badge */}
-        <div className="bg-emerald-50 border-b border-emerald-100 px-4 py-2.5 flex items-center justify-between text-xs shrink-0">
+        <div className="bg-emerald-50/80 border-b border-emerald-100 px-4 py-2 flex items-center justify-between text-xs shrink-0">
           <span className="text-emerald-900 font-medium flex items-center space-x-1.5">
-            <Database size={14} className="text-emerald-600" />
+            <Database size={14} className="text-emerald-700" />
             <span>ডাটাবেসে মোট হিসাব:</span>
           </span>
-          <span className="bg-emerald-700 text-white font-bold px-2.5 py-0.5 rounded-full">
+          <span className="bg-[#1B5E20] text-white font-bold px-2.5 py-0.5 rounded-full text-xs shadow-2xs">
             {recordCount.toLocaleString('bn-BD')} টি
           </span>
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-slate-200 bg-slate-50 shrink-0">
+        <div className="grid grid-cols-4 border-b border-slate-200 bg-slate-50 shrink-0 text-center">
+          <button
+            onClick={() => { setActiveTab('cloud'); setMessage(null); }}
+            className={`py-2.5 px-1 text-[11px] font-bold flex flex-col sm:flex-row items-center justify-center space-y-0.5 sm:space-y-0 sm:space-x-1 transition-colors border-b-2 ${
+              activeTab === 'cloud'
+                ? 'border-[#1B5E20] text-[#1B5E20] bg-white shadow-2xs'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Cloud size={14} />
+            <span className="truncate">১. ক্লাউড</span>
+          </button>
           <button
             onClick={() => { setActiveTab('export'); setMessage(null); }}
-            className={`flex-1 py-3 text-[11px] font-bold flex items-center justify-center space-x-1 transition-colors border-b-2 ${
+            className={`py-2.5 px-1 text-[11px] font-bold flex flex-col sm:flex-row items-center justify-center space-y-0.5 sm:space-y-0 sm:space-x-1 transition-colors border-b-2 ${
               activeTab === 'export'
-                ? 'border-[#1B5E20] text-[#1B5E20] bg-white'
-                : 'border-transparent text-slate-600 hover:text-slate-800'
+                ? 'border-[#1B5E20] text-[#1B5E20] bg-white shadow-2xs'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
             }`}
           >
             <Download size={14} />
-            <span>১. ব্যাকআপ</span>
+            <span className="truncate">২. ডাউনলোড</span>
           </button>
           <button
             onClick={() => { setActiveTab('import'); setMessage(null); }}
-            className={`flex-1 py-3 text-[11px] font-bold flex items-center justify-center space-x-1 transition-colors border-b-2 ${
+            className={`py-2.5 px-1 text-[11px] font-bold flex flex-col sm:flex-row items-center justify-center space-y-0.5 sm:space-y-0 sm:space-x-1 transition-colors border-b-2 ${
               activeTab === 'import'
-                ? 'border-[#1B5E20] text-[#1B5E20] bg-white'
-                : 'border-transparent text-slate-600 hover:text-slate-800'
+                ? 'border-[#1B5E20] text-[#1B5E20] bg-white shadow-2xs'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
             }`}
           >
             <Upload size={14} />
-            <span>২. রিস্টোর</span>
+            <span className="truncate">৩. রিস্টোর</span>
           </button>
           <button
             onClick={() => { setActiveTab('clear'); setMessage(null); }}
-            className={`flex-1 py-3 text-[11px] font-bold flex items-center justify-center space-x-1 transition-colors border-b-2 ${
+            className={`py-2.5 px-1 text-[11px] font-bold flex flex-col sm:flex-row items-center justify-center space-y-0.5 sm:space-y-0 sm:space-x-1 transition-colors border-b-2 ${
               activeTab === 'clear'
-                ? 'border-red-600 text-red-600 bg-white'
-                : 'border-transparent text-slate-600 hover:text-slate-800'
+                ? 'border-red-600 text-red-600 bg-white shadow-2xs'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
             }`}
           >
             <Trash2 size={14} />
-            <span>৩. সব মুছুন</span>
+            <span className="truncate">৪. মুছুন</span>
           </button>
         </div>
 
@@ -402,14 +662,202 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
               ) : (
                 <AlertCircle size={16} className="text-red-600 shrink-0" />
               )}
-              <span>{message.text}</span>
+              <span className="leading-snug">{message.text}</span>
             </div>
           )}
 
-          {activeTab === 'export' ? (
+          {activeTab === 'cloud' ? (
+            <div className="space-y-4">
+              {/* Google Account Connection Card */}
+              <div className="border border-slate-200 rounded-2xl p-3.5 bg-gradient-to-b from-slate-50/80 to-white shadow-xs">
+                {currentUser && authToken ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2.5 min-w-0">
+                        {currentUser.photoURL ? (
+                          <img
+                            src={currentUser.photoURL}
+                            alt="User"
+                            className="w-10 h-10 rounded-full border-2 border-emerald-500 shrink-0"
+                            referrerPolicy="no-referrer"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-full bg-emerald-700 text-white font-bold flex items-center justify-center shrink-0">
+                            {currentUser.displayName?.[0] || 'U'}
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <div className="font-bold text-xs text-slate-800 flex items-center space-x-1 truncate">
+                            <span>{currentUser.displayName || 'গুগল ব্যবহারকারী'}</span>
+                            <ShieldCheck size={14} className="text-emerald-600 shrink-0" />
+                          </div>
+                          <div className="text-[11px] text-slate-500 truncate">{currentUser.email}</div>
+                          <div className="text-[10px] text-emerald-700 font-semibold flex items-center space-x-1 mt-0.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                            <span>গুগল ড্রাইভ ক্লাউড কানেক্টেড</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={handleGoogleLogout}
+                        className="px-2.5 py-1.5 border border-slate-200 hover:bg-red-50 hover:text-red-700 text-slate-600 rounded-lg text-xs font-semibold flex items-center space-x-1 transition-colors shrink-0"
+                        title="লগআউট"
+                      >
+                        <LogOut size={13} />
+                        <span className="hidden sm:inline">লগআউট</span>
+                      </button>
+                    </div>
+
+                    {/* Auto Cloud Backup Switch */}
+                    <div className="flex items-center justify-between p-2.5 bg-emerald-50/70 border border-emerald-200/70 rounded-xl">
+                      <div className="space-y-0.5 pr-2">
+                        <div className="text-xs font-bold text-emerald-950 flex items-center space-x-1">
+                          <Sparkles size={13} className="text-emerald-700" />
+                          <span>স্বয়ংক্রিয় ক্লাউড ব্যাকআপ</span>
+                        </div>
+                        <div className="text-[10px] text-emerald-800">
+                          প্রতিটি হিসাব পরিবর্তন বা নতুন এন্ট্রির পর ড্রাইভে অটো সেভ হবে।
+                        </div>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                        <input
+                          type="checkbox"
+                          checked={autoBackup}
+                          onChange={(e) => handleToggleAutoBackup(e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className="w-9 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#1B5E20]"></div>
+                      </label>
+                    </div>
+
+                    {/* 1-Click Manual Cloud Backup Button */}
+                    <button
+                      onClick={handleCreateCloudBackup}
+                      disabled={isCloudBackingUp || recordCount === 0}
+                      className="w-full bg-[#1B5E20] hover:bg-emerald-800 disabled:bg-slate-200 disabled:text-slate-400 text-white py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center justify-center space-x-2"
+                    >
+                      <CloudUpload size={16} />
+                      <span>
+                        {isCloudBackingUp ? 'ক্লাউডে আপলোড হচ্ছে...' : 'এখনই গুগল ড্রাইভে নতুন ব্যাকআপ সেভ করুন'}
+                      </span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="text-center py-2 space-y-3">
+                    <div className="w-12 h-12 mx-auto bg-emerald-100 text-emerald-800 rounded-full flex items-center justify-center">
+                      <Cloud size={24} />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-xs text-slate-800">গুগল ড্রাইভ ক্লাউড ব্যাকআপ সংযুক্ত করুন</h3>
+                      <p className="text-[11px] text-slate-500 mt-1 max-w-xs mx-auto leading-relaxed">
+                        গুগল অ্যাকাউন্ট দিয়ে সাইন ইন করলে আপনার ডাটাবেস সরাসরি গুগল ড্রাইভে সুরক্ষিত থাকবে এবং ফোন হারালেও যেকোনো সময় সব হিসাব রিস্টোর করতে পারবেন।
+                      </p>
+                    </div>
+
+                    {/* Official Styled Google Sign-In Button */}
+                    <button
+                      type="button"
+                      onClick={handleGoogleLogin}
+                      disabled={isLoggingIn}
+                      className="inline-flex items-center justify-center px-4 py-2.5 border border-slate-300 rounded-xl shadow-xs bg-white text-xs font-bold text-slate-700 hover:bg-slate-50 active:scale-98 transition-all disabled:opacity-50 cursor-pointer space-x-2.5 mx-auto"
+                    >
+                      <svg className="w-4 h-4" viewBox="0 0 48 48">
+                        <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
+                        <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
+                        <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
+                        <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
+                      </svg>
+                      <span>{isLoggingIn ? 'সাইন ইন হচ্ছে...' : 'Sign in with Google (ক্লাউড ব্যাকআপ)'}</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Cloud Backups List */}
+              {currentUser && authToken && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between px-1">
+                    <div className="text-xs font-bold text-slate-800 flex items-center space-x-1.5">
+                      <HardDrive size={14} className="text-emerald-700" />
+                      <span>গুগল ড্রাইভের সংরক্ষিত ব্যাকআপ ফাইলসমূহ ({cloudBackups.length}):</span>
+                    </div>
+                    <button
+                      onClick={() => loadDriveBackupsList()}
+                      disabled={isLoadingCloud}
+                      className="text-xs text-emerald-800 hover:text-emerald-950 flex items-center space-x-1 font-semibold transition-colors"
+                      title="রিফ্রেশ"
+                    >
+                      <RefreshCw size={12} className={isLoadingCloud ? 'animate-spin' : ''} />
+                      <span>রিফ্রেশ</span>
+                    </button>
+                  </div>
+
+                  {isLoadingCloud && cloudBackups.length === 0 ? (
+                    <div className="text-center py-6 text-xs text-slate-500 bg-slate-50 rounded-xl border border-slate-100">
+                      ক্লাউড ব্যাকআপ লোড হচ্ছে...
+                    </div>
+                  ) : cloudBackups.length === 0 ? (
+                    <div className="text-center py-6 px-4 text-xs text-slate-500 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5">
+                      <Cloud className="mx-auto text-slate-400" size={24} />
+                      <p className="font-semibold text-slate-700">গুগল ড্রাইভে কোনো ব্যাকআপ পাওয়া যায়নি</p>
+                      <p className="text-[11px] text-slate-500">উপরে &ldquo;এখনই গুগল ড্রাইভে নতুন ব্যাকআপ সেভ করুন&rdquo; বাটনে চাপুন।</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-56 overflow-y-auto pr-0.5">
+                      {cloudBackups.map((file) => (
+                        <div
+                          key={file.id}
+                          className="border border-slate-200 rounded-xl p-2.5 bg-white hover:border-emerald-400 transition-all flex items-center justify-between shadow-2xs"
+                        >
+                          <div className="min-w-0 flex-1 pr-2 space-y-0.5">
+                            <div className="text-xs font-bold text-slate-800 truncate" title={file.name}>
+                              {file.name}
+                            </div>
+                            <div className="flex items-center space-x-2 text-[10px] text-slate-500">
+                              <span className="flex items-center space-x-1">
+                                <Calendar size={10} />
+                                <span>{new Date(file.createdTime).toLocaleString('bn-BD')}</span>
+                              </span>
+                              {file.size && (
+                                <span>• {(parseInt(file.size, 10) / 1024).toFixed(1)} KB</span>
+                              )}
+                            </div>
+                            {file.description && (
+                              <div className="text-[10px] text-emerald-800 truncate font-medium">
+                                {file.description}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex items-center space-x-1.5 shrink-0">
+                            <button
+                              onClick={() => setPendingRestoreFile(file)}
+                              className="px-2.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-[11px] font-bold transition-all shadow-2xs flex items-center space-x-1 active:scale-95"
+                              title="এই ব্যাকআপটি রিস্টোর করুন"
+                            >
+                              <CloudDownload size={13} />
+                              <span>রিস্টোর</span>
+                            </button>
+                            <button
+                              onClick={() => setPendingDeleteFile(file)}
+                              className="p-1.5 text-slate-400 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors"
+                              title="ড্রাইভ থেকে মুছে ফেলুন"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : activeTab === 'export' ? (
             <div className="space-y-3.5">
               <p className="text-xs text-slate-600 leading-relaxed">
-                আপনার হিসাবের ডাটা সুরক্ষিত রাখতে নিয়মিত ব্যাকআপ ফাইল নামিয়ে রাখুন। যেকোনো সময় এই ফাইল ব্যবহার করে সব ডাটা ফিরিয়ে আনা যাবে।
+                আপনার হিসাবের ডাটা সরাসরি ডিভাইসে নামিয়ে রাখতে নিচের যেকোনো ফরম্যাট বেছে নিন:
               </p>
 
               {/* JSON Export Card */}
@@ -442,7 +890,7 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
                     <FileSpreadsheet size={22} />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="font-bold text-xs text-slate-800">CSV/Excel ফরম্যাট</div>
+                    <div className="font-bold text-xs text-slate-800">CSV / Excel ফরম্যাট</div>
                     <div className="text-[11px] text-slate-500 mt-0.5">
                       MS Excel বা Google Sheets-এ সরাসরি খোলা ও প্রিন্ট করার জন্য উপযুক্ত।
                     </div>
@@ -467,7 +915,7 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
                   <div className="flex-1 min-w-0">
                     <div className="font-bold text-xs text-slate-800">SQL / DB ফরম্যাট (Database Dump)</div>
                     <div className="text-[11px] text-slate-500 mt-0.5">
-                      SQLite, MySQL বা যেকোনো SQL ডাটাবেসে ইমপোর্ট করার জন্য উপযুক্ত।
+                      SQLite, MySQL বা যেকোনো SQL ডাটাবেসে সরাসরি ইমপোর্ট করার জন্য উপযুক্ত।
                     </div>
                     <div className="grid grid-cols-2 gap-2 mt-2.5">
                       <button
@@ -573,7 +1021,7 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
                   <span>সতর্কতা: সব হিসাব চিরতরে মুছে ফেলা</span>
                 </div>
                 <p className="text-[11px] text-red-700 leading-relaxed">
-                  এই অপশনটি ব্যবহার করলে আপনার ডাটাবেসের সমস্ত হিসাব মুছে যাবে। মুছে ফেলার আগে ব্যাকআপ নামিয়ে রাখার পরামর্শ দেওয়া হচ্ছে।
+                  এই অপশনটি ব্যবহার করলে আপনার ডাটাবেসের সমস্ত হিসাব মুছে যাবে। মুছে ফেলার আগে ক্লাউড ব্যাকআপ বা ফাইল ব্যাকআপ নামিয়ে রাখুন।
                 </p>
               </div>
 
@@ -602,11 +1050,107 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
           )}
         </div>
 
+        {/* Confirmation Modal for Cloud Restore */}
+        {pendingRestoreFile && (
+          <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-2xs z-60 flex items-center justify-center p-3 animate-fade-in">
+            <div className="bg-white rounded-2xl p-4 max-w-sm w-full shadow-2xl border border-slate-100 space-y-3">
+              <div className="flex items-center space-x-2 text-emerald-800 font-bold text-sm">
+                <CloudDownload size={20} />
+                <span>ক্লাউড ব্যাকআপ রিস্টোর নিশ্চিতকরণ</span>
+              </div>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                আপনি কি <span className="font-bold text-slate-900">{pendingRestoreFile.name}</span> ব্যাকআপ ফাইলটি রিস্টোর করতে চান?
+              </p>
+              
+              <div className="space-y-1 bg-slate-50 p-2 rounded-lg border text-[11px] text-slate-600">
+                <div className="font-semibold text-slate-700">পদ্ধতি:</div>
+                <div className="flex items-center space-x-2">
+                  <label className="flex items-center space-x-1 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="restoreMode"
+                      checked={importMode === 'append'}
+                      onChange={() => setImportMode('append')}
+                    />
+                    <span>বর্তমান হিসাবের সাথে যোগ করুন</span>
+                  </label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <label className="flex items-center space-x-1 cursor-pointer text-amber-900 font-medium">
+                    <input
+                      type="radio"
+                      name="restoreMode"
+                      checked={importMode === 'replace'}
+                      onChange={() => setImportMode('replace')}
+                    />
+                    <span>আগের সব মুছে নতুন করে বসান</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end space-x-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setPendingRestoreFile(null)}
+                  className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg font-semibold"
+                >
+                  বাতিল
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmRestoreCloud}
+                  className="px-4 py-1.5 text-xs bg-[#1B5E20] hover:bg-emerald-800 text-white rounded-lg font-bold shadow-xs flex items-center space-x-1"
+                >
+                  <CheckCircle size={14} />
+                  <span>হ্যাঁ, রিস্টোর করুন</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Confirmation Modal for Cloud Delete */}
+        {pendingDeleteFile && (
+          <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-2xs z-60 flex items-center justify-center p-3 animate-fade-in">
+            <div className="bg-white rounded-2xl p-4 max-w-sm w-full shadow-2xl border border-slate-100 space-y-3">
+              <div className="flex items-center space-x-2 text-red-600 font-bold text-sm">
+                <Trash2 size={20} />
+                <span>ড্রাইভ ব্যাকআপ মুছে ফেলা</span>
+              </div>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                আপনি কি গুগল ড্রাইভ থেকে <span className="font-bold text-slate-900">{pendingDeleteFile.name}</span> ফাইলটি মুছে ফেলতে চান?
+              </p>
+              <div className="flex items-center justify-end space-x-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setPendingDeleteFile(null)}
+                  className="px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg font-semibold"
+                >
+                  বাতিল
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDeleteCloud}
+                  className="px-4 py-1.5 text-xs bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold shadow-xs flex items-center space-x-1"
+                >
+                  <Trash2 size={14} />
+                  <span>মুছে দিন</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Footer */}
-        <div className="bg-slate-50 border-t border-slate-100 p-3 shrink-0 flex justify-end">
+        <div className="bg-slate-50 border-t border-slate-100 px-4 py-2.5 shrink-0 flex items-center justify-between">
+          <div className="text-[11px] text-slate-500 truncate">
+            {lastCloudTime
+              ? `সর্বশেষ ক্লাউড ব্যাকআপ: ${new Date(lastCloudTime).toLocaleDateString('bn-BD')}`
+              : 'ক্লাউড ব্যাকআপ: সক্রিয় নেই'}
+          </div>
           <button
             onClick={onClose}
-            className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-bold transition-colors"
+            className="px-4 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-bold transition-colors"
           >
             বন্ধ করুন
           </button>

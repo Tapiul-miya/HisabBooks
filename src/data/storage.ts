@@ -1,6 +1,6 @@
 import initSqlJs, { Database, SqlJsStatic } from 'sql.js';
 import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
-import { VehicleHisab, GroupByMode, GroupedHisab, DatabaseTotals, HisabQueryResult } from '../types';
+import { VehicleHisab, GroupByMode, GroupedHisab, DatabaseTotals, HisabQueryResult, CustomerFilter } from '../types';
 
 const DB_STORE_NAME = 'sqlite_db_store';
 const DB_FILE_KEY = 'hisabbook.sqlite';
@@ -486,16 +486,28 @@ export class HisabStorage {
     query: string = '',
     searchColumn: string | null = null,
     groupByMode: GroupByMode = GroupByMode.BY_USER_DETAILS,
-    workDetailsFilter: string = ''
+    workDetailsFilter: string = '',
+    customerFilter: CustomerFilter | null = null
   ): Promise<HisabQueryResult> {
     const db = await getSqliteDb();
     const trimmed = query.trim();
     const trimmedWork = workDetailsFilter.trim();
     const isUserDetails = groupByMode === GroupByMode.BY_USER_DETAILS;
 
-    // 1. Where clause for search & workDetails filter
+    // 1. Where clause for search & workDetails filter & customer filter
     const conditions: string[] = [];
     const params: (string | number)[] = [];
+
+    if (customerFilter) {
+      conditions.push(`COALESCE(name, '') = ?`);
+      params.push(customerFilter.name || '');
+      conditions.push(`COALESCE(mobile, '') = ?`);
+      params.push(customerFilter.mobile || '');
+      conditions.push(`COALESCE(address, '') = ?`);
+      params.push(customerFilter.address || '');
+      conditions.push(`COALESCE(hisabType, '') = ?`);
+      params.push(customerFilter.hisabType || '');
+    }
 
     if (trimmed.length > 0) {
       if (searchColumn) {
@@ -668,9 +680,10 @@ export class HisabStorage {
     query: string = '',
     searchColumn: string | null = null,
     groupByMode: GroupByMode = GroupByMode.BY_USER_DETAILS,
-    workDetailsFilter: string = ''
+    workDetailsFilter: string = '',
+    customerFilter: CustomerFilter | null = null
   ): Promise<GroupedHisab[]> {
-    const res = await this.getQueryResult(query, searchColumn, groupByMode, workDetailsFilter);
+    const res = await this.getQueryResult(query, searchColumn, groupByMode, workDetailsFilter, customerFilter);
     return res.groups;
   }
 

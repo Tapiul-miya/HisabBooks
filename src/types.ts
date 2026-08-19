@@ -59,6 +59,13 @@ export interface DatabaseTotals {
   totalCount: number;
 }
 
+export interface CustomerFilter {
+  name: string;
+  mobile: string;
+  address: string;
+  hisabType: string;
+}
+
 export interface HisabQueryResult {
   groups: GroupedHisab[];
   totals: DatabaseTotals;

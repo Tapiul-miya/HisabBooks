@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Plus } from 'lucide-react';
-import { GroupedHisab, GroupByMode, VehicleHisab, getGroupKey, DatabaseTotals } from '../types';
+import { Plus, UserCheck, X, Filter } from 'lucide-react';
+import { GroupedHisab, GroupByMode, VehicleHisab, getGroupKey, DatabaseTotals, CustomerFilter } from '../types';
 import { HeaderSummary } from '../components/HeaderSummary';
 import { DashboardSearchBar } from '../components/DashboardSearchBar';
 import { ViewModeFilterRow } from '../components/ViewModeFilterRow';
 import { GroupSummaryCard } from '../components/GroupSummaryCard';
 import { EmptyStateView } from '../components/EmptyStateView';
+import { Utils } from '../util/utils';
 
 const INITIAL_BATCH_SIZE = 25;
 const BATCH_INCREMENT = 25;
@@ -19,10 +20,13 @@ interface HisabListScreenProps {
   expandedGroups: Set<string>;
   highlightedGroupKey?: string | null;
   highlightedItemId?: number | null;
+  customerFilter?: CustomerFilter | null;
   searchQuery: string;
   onSearchQueryChange: (q: string) => void;
   onGroupByModeSelected: (mode: GroupByMode) => void;
   onWorkDetailsFilterChange: (workDetails: string) => void;
+  onCustomerClick?: (filter: CustomerFilter) => void;
+  onClearCustomerFilter?: () => void;
   onToggleGroup: (key: string) => void;
   onAddNewClick: () => void;
   onEditClick: (item: VehicleHisab) => void;
@@ -43,10 +47,13 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
   expandedGroups,
   highlightedGroupKey,
   highlightedItemId,
+  customerFilter,
   searchQuery,
   onSearchQueryChange,
   onGroupByModeSelected,
   onWorkDetailsFilterChange,
+  onCustomerClick,
+  onClearCustomerFilter,
   onToggleGroup,
   onAddNewClick,
   onEditClick,
@@ -66,7 +73,7 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
   // Reset pagination when filter or search changes
   useEffect(() => {
     setVisibleCount(INITIAL_BATCH_SIZE);
-  }, [searchQuery, selectedGroupByMode]);
+  }, [searchQuery, selectedGroupByMode, customerFilter]);
 
   // If a group is highlighted or expanded, ensure it is within visible items
   useEffect(() => {
@@ -145,6 +152,40 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
             onModeSelected={onGroupByModeSelected}
             onWorkDetailsFilterChange={onWorkDetailsFilterChange}
           />
+
+          {/* Active Customer Filter Indicator */}
+          {customerFilter && (
+            <div className="mx-2 sm:mx-3 mt-1.5 px-2.5 py-1.5 bg-emerald-50 border border-emerald-300 rounded-lg flex items-center justify-between shadow-2xs">
+              <div className="flex items-center space-x-1.5 min-w-0">
+                <span className="p-1 bg-emerald-700 text-white rounded-md shrink-0">
+                  <UserCheck size={12} />
+                </span>
+                <div className="text-[11px] sm:text-xs text-emerald-950 truncate leading-tight">
+                  <span className="font-bold text-emerald-900">{customerFilter.name || 'বেনামী'}</span>
+                  {customerFilter.mobile && <span className="text-emerald-800 ml-1">({customerFilter.mobile})</span>}
+                  {customerFilter.hisabType && (
+                    <span className="bg-emerald-200/70 text-emerald-900 px-1 py-0.2 rounded text-[10px] ml-1 font-semibold">
+                      {Utils.getHisabTypeLabel(customerFilter.hisabType)}
+                    </span>
+                  )}
+                  {customerFilter.address && (
+                    <span className="text-emerald-700 text-[10px] ml-1 hidden sm:inline truncate">
+                      • {customerFilter.address}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={onClearCustomerFilter}
+                className="ml-2 px-1.5 py-0.5 text-emerald-800 hover:text-red-700 hover:bg-red-50 rounded transition-colors shrink-0 flex items-center space-x-0.5 text-[11px] font-bold cursor-pointer"
+                title="ফিল্টার বাতিল করুন"
+              >
+                <X size={13} />
+                <span>রিসেট</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -168,10 +209,12 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
                   expanded={expandedGroups.has(groupKey)}
                   isHighlighted={groupKey === highlightedGroupKey}
                   highlightedItemId={highlightedItemId}
+                  activeCustomerFilter={customerFilter}
                   onExpandToggle={() => onToggleGroup(groupKey)}
                   onDeleteHisab={onDeleteHisab}
                   onEditClick={onEditClick}
                   onCopyClick={onCopyClick}
+                  onCustomerClick={onCustomerClick}
                   onReloadData={onReloadData}
                 />
               );
