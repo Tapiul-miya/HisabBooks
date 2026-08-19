@@ -988,30 +988,31 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
               </div>
 
               {/* Upload Box */}
-              <div className="border-2 border-dashed border-slate-300 hover:border-[#1B5E20] rounded-2xl p-5 text-center transition-colors bg-slate-50/50">
+              <label
+                htmlFor="backup-file-upload-input"
+                className="border-2 border-dashed border-slate-300 hover:border-[#1B5E20] rounded-2xl p-5 text-center transition-colors bg-slate-50/50 block cursor-pointer active:bg-slate-100"
+              >
                 <input
+                  id="backup-file-upload-input"
                   type="file"
                   ref={fileInputRef}
                   onChange={handleFileChange}
                   accept="*/*,.json,.csv,.sql,.db,application/json,text/csv,text/plain,application/sql"
                   className="hidden"
                 />
-                <Upload size={32} className="mx-auto text-emerald-700 mb-2" />
-                <div className="font-bold text-xs text-slate-800">
+                <Upload size={32} className="mx-auto text-emerald-700 mb-2 pointer-events-none" />
+                <div className="font-bold text-xs text-slate-800 pointer-events-none">
                   {isImporting ? 'ডাটা প্রসেসিং হচ্ছে...' : 'ফাইল সিলেক্ট করতে ক্লিক করুন'}
                 </div>
-                <div className="text-[11px] text-slate-500 mt-1">
+                <div className="text-[11px] text-slate-500 mt-1 pointer-events-none">
                   সহায়ক ফাইল: .json, .csv, .sql, .db
                 </div>
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isImporting}
-                  className="mt-3 bg-[#1B5E20] hover:bg-emerald-800 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-xs"
+                <div
+                  className="mt-3 inline-flex items-center justify-center bg-[#1B5E20] hover:bg-emerald-800 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-xs pointer-events-none"
                 >
                   {isImporting ? 'অপেক্ষা করুন...' : 'ফাইল বাছুন (Browse File)'}
-                </button>
-              </div>
+                </div>
+              </label>
             </div>
           ) : (
             <div className="space-y-4">

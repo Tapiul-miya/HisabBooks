@@ -10,6 +10,7 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import com.getcapacitor.BridgeActivity;
+import com.getcapacitor.BridgeWebChromeClient;
 
 public class MainActivity extends BridgeActivity {
     @SuppressLint("SetJavaScriptEnabled")
@@ -30,9 +31,11 @@ public class MainActivity extends BridgeActivity {
             settings.setSupportMultipleWindows(true);
             settings.setDomStorageEnabled(true);
             settings.setDatabaseEnabled(true);
+            settings.setAllowFileAccess(true);
+            settings.setAllowContentAccess(true);
 
-            // Handle OAuth popups nicely within Android Dialog
-            webView.setWebChromeClient(new WebChromeClient() {
+            // Subclass Capacitor's BridgeWebChromeClient to retain onShowFileChooser, permissions, etc.
+            webView.setWebChromeClient(new BridgeWebChromeClient(this.bridge) {
                 @Override
                 public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, Message resultMsg) {
                     WebView popupWebView = new WebView(MainActivity.this);
@@ -41,6 +44,8 @@ public class MainActivity extends BridgeActivity {
                     popupSettings.setDomStorageEnabled(true);
                     popupSettings.setSupportMultipleWindows(true);
                     popupSettings.setJavaScriptCanOpenWindowsAutomatically(true);
+                    popupSettings.setAllowFileAccess(true);
+                    popupSettings.setAllowContentAccess(true);
 
                     Dialog dialog = new Dialog(MainActivity.this, android.R.style.Theme_DeviceDefault_Light_NoActionBar_Fullscreen);
                     dialog.setContentView(popupWebView, new ViewGroup.LayoutParams(
@@ -74,4 +79,3 @@ public class MainActivity extends BridgeActivity {
         }
     }
 }
-
