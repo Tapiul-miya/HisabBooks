@@ -12,13 +12,9 @@ import firebaseConfig from '../../firebase-applet-config.json';
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
 
-export const SCOPES = [
-  'https://www.googleapis.com/auth/drive.file',
-  'https://www.googleapis.com/auth/drive.appdata'
-];
-
 const provider = new GoogleAuthProvider();
-SCOPES.forEach(scope => provider.addScope(scope));
+provider.addScope('https://www.googleapis.com/auth/drive.file');
+provider.addScope('https://www.googleapis.com/auth/drive.appdata');
 
 let isSigningIn = false;
 let cachedAccessToken: string | null = null;
@@ -32,6 +28,7 @@ export const initAuth = (
       if (cachedAccessToken) {
         if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
       } else if (!isSigningIn) {
+        cachedAccessToken = null;
         if (onAuthFailure) onAuthFailure();
       }
     } else {
@@ -53,7 +50,16 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
     cachedAccessToken = credential.accessToken;
     return { user: result.user, accessToken: cachedAccessToken };
   } catch (error: unknown) {
-    console.error('Google Sign in error:', error);
+    const authErr = error as { code?: string; message?: string };
+    console.error('Google Sign in error:', authErr);
+
+    if (authErr?.code === 'auth/popup-closed-by-user' || authErr?.code === 'auth/cancelled-popup-request') {
+      throw new Error('সাইন-ইন পপআপ উইন্ডো বন্ধ করা হয়েছে। আবার চেষ্টা করুন।');
+    }
+    if (authErr?.code === 'auth/popup-blocked') {
+      throw new Error('ব্রাউজারে পপআপ ব্লক করা আছে। অনুগ্রহ করে পপআপ অনুমোদিত (Allow) করে আবার চেষ্টা করুন।');
+    }
+
     throw error;
   } finally {
     isSigningIn = false;
@@ -69,6 +75,10 @@ export const setCachedAccessToken = (token: string | null) => {
 };
 
 export const logoutGoogle = async () => {
-  await signOut(auth);
+  try {
+    await signOut(auth);
+  } catch (e) {
+    console.warn('Sign out warning:', e);
+  }
   cachedAccessToken = null;
 };

@@ -116,19 +116,47 @@ const INITIAL_SAMPLE_DATA: Omit<VehicleHisab, 'id'>[] = [
 async function getStoredDbBinary(): Promise<Uint8Array | null> {
   return new Promise((resolve) => {
     try {
+      if (typeof indexedDB === 'undefined') {
+        resolve(null);
+        return;
+      }
       const request = indexedDB.open('HisabBookSqliteStorage', 1);
       request.onupgradeneeded = () => {
-        request.result.createObjectStore(DB_STORE_NAME);
+        try {
+          request.result.createObjectStore(DB_STORE_NAME);
+        } catch {
+          // ignore
+        }
       };
       request.onsuccess = () => {
         const db = request.result;
-        const tx = db.transaction(DB_STORE_NAME, 'readonly');
-        const store = tx.objectStore(DB_STORE_NAME);
-        const getReq = store.get(DB_FILE_KEY);
-        getReq.onsuccess = () => resolve(getReq.result || null);
-        getReq.onerror = () => resolve(null);
+        db.onversionchange = () => {
+          try { db.close(); } catch {}
+        };
+        try {
+          const tx = db.transaction(DB_STORE_NAME, 'readonly');
+          const store = tx.objectStore(DB_STORE_NAME);
+          const getReq = store.get(DB_FILE_KEY);
+          getReq.onsuccess = () => {
+            const result = getReq.result || null;
+            try { db.close(); } catch {}
+            resolve(result);
+          };
+          getReq.onerror = () => {
+            try { db.close(); } catch {}
+            resolve(null);
+          };
+          tx.onabort = () => {
+            try { db.close(); } catch {}
+            resolve(null);
+          };
+        } catch {
+          try { db.close(); } catch {}
+          resolve(null);
+        }
       };
       request.onerror = () => resolve(null);
+      request.onblocked = () => resolve(null);
     } catch {
       resolve(null);
     }
@@ -138,21 +166,58 @@ async function getStoredDbBinary(): Promise<Uint8Array | null> {
 async function saveDbBinary(data: Uint8Array): Promise<void> {
   return new Promise((resolve, reject) => {
     try {
+      if (typeof indexedDB === 'undefined') {
+        resolve();
+        return;
+      }
       const request = indexedDB.open('HisabBookSqliteStorage', 1);
       request.onupgradeneeded = () => {
-        request.result.createObjectStore(DB_STORE_NAME);
+        try {
+          request.result.createObjectStore(DB_STORE_NAME);
+        } catch {
+          // ignore
+        }
       };
       request.onsuccess = () => {
         const db = request.result;
-        const tx = db.transaction(DB_STORE_NAME, 'readwrite');
-        const store = tx.objectStore(DB_STORE_NAME);
-        store.put(data, DB_FILE_KEY);
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
+        db.onversionchange = () => {
+          try { db.close(); } catch {}
+        };
+        try {
+          const tx = db.transaction(DB_STORE_NAME, 'readwrite');
+          const store = tx.objectStore(DB_STORE_NAME);
+          store.put(data, DB_FILE_KEY);
+          tx.oncomplete = () => {
+            try { db.close(); } catch {}
+            resolve();
+          };
+          tx.onerror = () => {
+            try { db.close(); } catch {}
+            // Gracefully resolve to prevent breaking app flow on IDB errors
+            console.warn('IndexedDB save transaction error:', tx.error);
+            resolve();
+          };
+          tx.onabort = () => {
+            try { db.close(); } catch {}
+            resolve();
+          };
+        } catch (txErr) {
+          try { db.close(); } catch {}
+          console.warn('Failed to start transaction on IndexedDB:', txErr);
+          resolve();
+        }
       };
-      request.onerror = () => reject(request.error);
+      request.onerror = () => {
+        console.warn('IndexedDB open error during save:', request.error);
+        resolve();
+      };
+      request.onblocked = () => {
+        console.warn('IndexedDB open blocked during save');
+        resolve();
+      };
     } catch (err) {
-      reject(err);
+      console.warn('saveDbBinary exception:', err);
+      resolve();
     }
   });
 }
