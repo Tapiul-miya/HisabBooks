@@ -6,19 +6,24 @@ import android.os.Bundle;
 import android.os.Message;
 import android.view.ViewGroup;
 import android.webkit.CookieManager;
+import android.webkit.PermissionRequest;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import com.getcapacitor.BridgeActivity;
-import com.getcapacitor.BridgeWebChromeClient;
 
 public class MainActivity extends BridgeActivity {
-    @SuppressLint("SetJavaScriptEnabled")
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+    }
+
+    @Override
+    public void onStart() {
+        super.onStart();
         setupInAppWebView();
     }
 
@@ -45,8 +50,11 @@ public class MainActivity extends BridgeActivity {
             cookieManager.setAcceptCookie(true);
             cookieManager.setAcceptThirdPartyCookies(webView, true);
 
-            // Subclass Capacitor's BridgeWebChromeClient to retain file chooser and handle in-app popup dialogs
-            webView.setWebChromeClient(new BridgeWebChromeClient(this.bridge) {
+            // Get original WebChromeClient set by Capacitor to delegate essential methods (like file picker and camera)
+            final WebChromeClient originalClient = webView.getWebChromeClient();
+
+            // Safe delegation wrapper to prevent crashes due to internal Capacitor classes
+            webView.setWebChromeClient(new WebChromeClient() {
                 @Override
                 public boolean onCreateWindow(WebView view, boolean isDialog, boolean isUserGesture, Message resultMsg) {
                     WebView popupWebView = new WebView(MainActivity.this);
@@ -58,7 +66,7 @@ public class MainActivity extends BridgeActivity {
                     popupSettings.setAllowFileAccess(true);
                     popupSettings.setAllowContentAccess(true);
 
-                    // Clean user agent so Google OAuth does not block webview
+                    // Clean user agent so Google OAuth does not block the webview
                     String ua = popupSettings.getUserAgentString();
                     if (ua != null && ua.contains("; wv")) {
                         popupSettings.setUserAgentString(ua.replace("; wv", ""));
@@ -110,6 +118,25 @@ public class MainActivity extends BridgeActivity {
                     transport.setWebView(popupWebView);
                     resultMsg.sendToTarget();
                     return true;
+                }
+
+                // Delegate standard file chooser requests directly back to Capacitor's original client
+                @Override
+                public boolean onShowFileChooser(WebView webView, ValueCallback<android.net.Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
+                    if (originalClient != null) {
+                        return originalClient.onShowFileChooser(webView, filePathCallback, fileChooserParams);
+                    }
+                    return super.onShowFileChooser(webView, filePathCallback, fileChooserParams);
+                }
+
+                // Delegate system permission requests directly back to Capacitor's original client
+                @Override
+                public void onPermissionRequest(PermissionRequest request) {
+                    if (originalClient != null) {
+                        originalClient.onPermissionRequest(request);
+                    } else {
+                        super.onPermissionRequest(request);
+                    }
                 }
             });
         }
