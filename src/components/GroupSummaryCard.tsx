@@ -173,18 +173,16 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
               >
                 <Plus size={8} className="stroke-[2.5]" />
               </button>
-              {mode === GroupByMode.BY_USER_DETAILS && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowEditModal(true);
-                  }}
-                  className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
-                  title="গ্রুপের তথ্য সম্পাদন করুন"
-                >
-                  <Pencil size={16} />
-                </button>
-              )}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowEditModal(true);
+                }}
+                className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                title="গ্রুপের তথ্য সম্পাদন করুন"
+              >
+                <Pencil size={16} />
+              </button>
               <div className="text-slate-500 p-1">
                 {expanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
               </div>

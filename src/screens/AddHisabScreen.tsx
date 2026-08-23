@@ -65,17 +65,18 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
   const isEditMode = Boolean(itemToEdit);
   const isByDateWorkMode = groupByMode === GroupByMode.BY_DATE_WORK;
 
-  // In Date filter mode (BY_DATE_WORK) during child edit:
-  // - Type, Date, Work Details ('কিসের কাজ লেখেন'), Customer Name, Mobile Number, Address are LOCKED.
-  // - The 6 work subfields (কত শাল, কোন সেশন, ম্যানেজারের নাম, গাড়ির নাম, ড্রাইভার নাম, বেড) are UNLOCKED!
-  // - Qty, Rate, Bill, Paid, Spend, Optional etc. are UNLOCKED for child editing.
+  // In Date filter mode (BY_DATE_WORK):
+  // - Type, Date are LOCKED when clicking plus on a group or editing.
+  // - Customer Name, Mobile Number, Address, Work Details ('কিসের কাজ লেখেন'), and the 6 work subfields are UNLOCKED!
+  // In Grahok/Customer filter mode (non-date modes):
+  // - Customer Name, Work Details, and the 6 work subfields (কত শাল, কোন সেশন, ম্যানেজারের নাম, গাড়ির নাম, ড্রাইভার নাম, বেড) are LOCKED when clicking plus on a group card.
   const isTypeFrozen = isEditMode || Boolean(initialHisabType);
   const isDateFrozen = isEditMode || Boolean(initialDate);
-  const isWorkDetailsFrozen = (isByDateWorkMode && isEditMode) || Boolean(initialWorkDetails);
-  const isWorkSubFieldsFrozen = false; // Always UNLOCKED as requested: কত শাল, কোন সেশন, ম্যানেজারের নাম, গাড়ির নাম, ড্রাইভার নাম, বেড
-  const isNameFrozen = (isByDateWorkMode && isEditMode) || Boolean(initialName);
-  const isMobileFrozen = (isByDateWorkMode && isEditMode) || Boolean(initialMobile);
-  const isAddressFrozen = (isByDateWorkMode && isEditMode) || Boolean(initialAddress);
+  const isWorkDetailsFrozen = isByDateWorkMode ? false : Boolean(initialWorkDetails);
+  const isWorkSubFieldsFrozen = isByDateWorkMode ? false : Boolean(initialWorkDetails || isEditMode);
+  const isNameFrozen = Boolean(initialName);
+  const isMobileFrozen = Boolean(initialMobile);
+  const isAddressFrozen = Boolean(initialAddress);
 
   const currentDateStr = new Date().toISOString().split('T')[0];
 

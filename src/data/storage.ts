@@ -431,34 +431,43 @@ export class HisabStorage {
    */
   public static async updateGroupProfile(
     oldGroup: { name: string; date: string; hisabType: string; address: string; mobile: string; workDetails: string },
-    newGroup: { name: string; mobile: string; address: string; workDetails: string },
+    newGroup: { name?: string; mobile?: string; address?: string; workDetails?: string; date?: string },
     groupByMode: GroupByMode
   ): Promise<boolean> {
     const db = await getSqliteDb();
-    let whereClause = '';
-    const params: string[] = [
-      newGroup.name || '',
-      newGroup.mobile || '',
-      newGroup.address || '',
-      newGroup.workDetails || ''
-    ];
-
     if (groupByMode === GroupByMode.BY_USER_DETAILS) {
-      whereClause = 'WHERE name = ? AND hisabType = ? AND address = ? AND mobile = ? AND workDetails = ?';
-      params.push(oldGroup.name || '', oldGroup.hisabType || '', oldGroup.address || '', oldGroup.mobile || '', oldGroup.workDetails || '');
+      const stmt = db.prepare(`
+        UPDATE hisab
+        SET name = ?, mobile = ?, address = ?, workDetails = ?
+        WHERE COALESCE(name, "") = ? AND COALESCE(hisabType, "") = ? AND COALESCE(address, "") = ? AND COALESCE(mobile, "") = ? AND COALESCE(workDetails, "") = ?
+      `);
+      stmt.run([
+        newGroup.name || '',
+        newGroup.mobile || '',
+        newGroup.address || '',
+        newGroup.workDetails || '',
+        oldGroup.name || '',
+        oldGroup.hisabType || '',
+        oldGroup.address || '',
+        oldGroup.mobile || '',
+        oldGroup.workDetails || ''
+      ]);
+      stmt.free();
     } else {
-      whereClause = 'WHERE date = ? AND hisabType = ? AND workDetails = ?';
-      params.push(oldGroup.date || '', oldGroup.hisabType || '', oldGroup.workDetails || '');
+      const stmt = db.prepare(`
+        UPDATE hisab
+        SET date = ?, workDetails = ?
+        WHERE COALESCE(date, "") = ? AND COALESCE(hisabType, "") = ? AND COALESCE(workDetails, "") = ?
+      `);
+      stmt.run([
+        newGroup.date !== undefined ? newGroup.date : (oldGroup.date || ''),
+        newGroup.workDetails || '',
+        oldGroup.date || '',
+        oldGroup.hisabType || '',
+        oldGroup.workDetails || ''
+      ]);
+      stmt.free();
     }
-
-    const stmt = db.prepare(`
-      UPDATE hisab
-      SET name = ?, mobile = ?, address = ?, workDetails = ?
-      ${whereClause}
-    `);
-
-    stmt.run(params);
-    stmt.free();
     await this.persist();
     return true;
   }
