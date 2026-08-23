@@ -65,14 +65,17 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
   const isEditMode = Boolean(itemToEdit);
   const isByDateWorkMode = groupByMode === GroupByMode.BY_DATE_WORK;
 
-  // Freeze condition logic from AddHisabScreen.kt
-  // In BY_DATE_WORK mode during child edit: hisabType & date are LOCKED, while workDetails, name, mobile, address are UNLOCKED!
+  // In Date filter mode (BY_DATE_WORK) during child edit:
+  // - Type, Date, Work Details ('কিসের কাজ লেখেন'), Customer Name, Mobile Number, Address are LOCKED.
+  // - The 6 work subfields (কত শাল, কোন সেশন, ম্যানেজারের নাম, গাড়ির নাম, ড্রাইভার নাম, বেড) are UNLOCKED!
+  // - Qty, Rate, Bill, Paid, Spend, Optional etc. are UNLOCKED for child editing.
   const isTypeFrozen = isEditMode || Boolean(initialHisabType);
   const isDateFrozen = isEditMode || Boolean(initialDate);
-  const isWorkDetailsFrozen = isEditMode || Boolean(initialWorkDetails);
-  const isNameFrozen = isEditMode || Boolean(initialName);
-  const isMobileFrozen = isEditMode || Boolean(initialMobile);
-  const isAddressFrozen = isEditMode || Boolean(initialAddress);
+  const isWorkDetailsFrozen = (isByDateWorkMode && isEditMode) || Boolean(initialWorkDetails);
+  const isWorkSubFieldsFrozen = false; // Always UNLOCKED as requested: কত শাল, কোন সেশন, ম্যানেজারের নাম, গাড়ির নাম, ড্রাইভার নাম, বেড
+  const isNameFrozen = (isByDateWorkMode && isEditMode) || Boolean(initialName);
+  const isMobileFrozen = (isByDateWorkMode && isEditMode) || Boolean(initialMobile);
+  const isAddressFrozen = (isByDateWorkMode && isEditMode) || Boolean(initialAddress);
 
   const currentDateStr = new Date().toISOString().split('T')[0];
 
@@ -744,12 +747,12 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
                     <Calendar size={12} className="text-[#1565C0]" />
                     <span>কত শাল</span>
                   </span>
-                  {isWorkDetailsFrozen && <Lock size={11} className="text-slate-400" />}
+                  {isWorkSubFieldsFrozen && <Lock size={11} className="text-slate-400" />}
                 </label>
                 <div className="relative flex items-center">
                   <input
                     type="text"
-                    disabled={isWorkDetailsFrozen}
+                    disabled={isWorkSubFieldsFrozen}
                     value={year}
                     onChange={(e) => {
                       setYear(e.target.value);
@@ -758,11 +761,11 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
                     onFocus={() => setShowYearSuggestions(true)}
                     placeholder="যেমন: ২০২৪"
                     className={`w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-[#1565C0] ${
-                      isWorkDetailsFrozen ? 'bg-slate-100/90 text-slate-600 cursor-not-allowed font-medium' : ''
+                      isWorkSubFieldsFrozen ? 'bg-slate-100/90 text-slate-600 cursor-not-allowed font-medium' : ''
                     }`}
                   />
                 </div>
-                {!isWorkDetailsFrozen && showYearSuggestions && yearSuggestions.length > 0 && (
+                {!isWorkSubFieldsFrozen && showYearSuggestions && yearSuggestions.length > 0 && (
                   <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-36 overflow-y-auto divide-y divide-slate-100">
                     {yearSuggestions.map((item, idx) => (
                       <button
@@ -789,12 +792,12 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
                     <Layers size={12} className="text-[#1565C0]" />
                     <span>কোন সেশন</span>
                   </span>
-                  {isWorkDetailsFrozen && <Lock size={11} className="text-slate-400" />}
+                  {isWorkSubFieldsFrozen && <Lock size={11} className="text-slate-400" />}
                 </label>
                 <div className="relative flex items-center">
                   <input
                     type="text"
-                    disabled={isWorkDetailsFrozen}
+                    disabled={isWorkSubFieldsFrozen}
                     value={session}
                     onChange={(e) => {
                       setSession(e.target.value);
@@ -803,11 +806,11 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
                     onFocus={() => setShowSessionSuggestions(true)}
                     placeholder="যেমন: রবি / খরিপ"
                     className={`w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-[#1565C0] ${
-                      isWorkDetailsFrozen ? 'bg-slate-100/90 text-slate-600 cursor-not-allowed font-medium' : ''
+                      isWorkSubFieldsFrozen ? 'bg-slate-100/90 text-slate-600 cursor-not-allowed font-medium' : ''
                     }`}
                   />
                 </div>
-                {!isWorkDetailsFrozen && showSessionSuggestions && sessionSuggestions.length > 0 && (
+                {!isWorkSubFieldsFrozen && showSessionSuggestions && sessionSuggestions.length > 0 && (
                   <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-36 overflow-y-auto divide-y divide-slate-100">
                     {sessionSuggestions.map((item, idx) => (
                       <button
@@ -834,12 +837,12 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
                     <User size={12} className="text-[#1565C0]" />
                     <span>ম্যানেজারের নাম</span>
                   </span>
-                  {isWorkDetailsFrozen && <Lock size={11} className="text-slate-400" />}
+                  {isWorkSubFieldsFrozen && <Lock size={11} className="text-slate-400" />}
                 </label>
                 <div className="relative flex items-center">
                   <input
                     type="text"
-                    disabled={isWorkDetailsFrozen}
+                    disabled={isWorkSubFieldsFrozen}
                     value={managerName}
                     onChange={(e) => {
                       setManagerName(e.target.value);
@@ -848,11 +851,11 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
                     onFocus={() => setShowManagerSuggestions(true)}
                     placeholder="যেমন: আব্দুর রহিম"
                     className={`w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-[#1565C0] ${
-                      isWorkDetailsFrozen ? 'bg-slate-100/90 text-slate-600 cursor-not-allowed font-medium' : ''
+                      isWorkSubFieldsFrozen ? 'bg-slate-100/90 text-slate-600 cursor-not-allowed font-medium' : ''
                     }`}
                   />
                 </div>
-                {!isWorkDetailsFrozen && showManagerSuggestions && managerSuggestions.length > 0 && (
+                {!isWorkSubFieldsFrozen && showManagerSuggestions && managerSuggestions.length > 0 && (
                   <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-36 overflow-y-auto divide-y divide-slate-100">
                     {managerSuggestions.map((item, idx) => (
                       <button
@@ -879,12 +882,12 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
                     <Tag size={12} className="text-[#1565C0]" />
                     <span>গাড়ির নাম</span>
                   </span>
-                  {isWorkDetailsFrozen && <Lock size={11} className="text-slate-400" />}
+                  {isWorkSubFieldsFrozen && <Lock size={11} className="text-slate-400" />}
                 </label>
                 <div className="relative flex items-center">
                   <input
                     type="text"
-                    disabled={isWorkDetailsFrozen}
+                    disabled={isWorkSubFieldsFrozen}
                     value={vehicleName}
                     onChange={(e) => {
                       setVehicleName(e.target.value);
@@ -893,11 +896,11 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
                     onFocus={() => setShowVehicleSuggestions(true)}
                     placeholder="যেমন: ট্রাফি / ট্রাক"
                     className={`w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-[#1565C0] ${
-                      isWorkDetailsFrozen ? 'bg-slate-100/90 text-slate-600 cursor-not-allowed font-medium' : ''
+                      isWorkSubFieldsFrozen ? 'bg-slate-100/90 text-slate-600 cursor-not-allowed font-medium' : ''
                     }`}
                   />
                 </div>
-                {!isWorkDetailsFrozen && showVehicleSuggestions && vehicleSuggestions.length > 0 && (
+                {!isWorkSubFieldsFrozen && showVehicleSuggestions && vehicleSuggestions.length > 0 && (
                   <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-36 overflow-y-auto divide-y divide-slate-100">
                     {vehicleSuggestions.map((item, idx) => (
                       <button
@@ -924,12 +927,12 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
                     <User size={12} className="text-[#1565C0]" />
                     <span>ড্রাইভার নাম</span>
                   </span>
-                  {isWorkDetailsFrozen && <Lock size={11} className="text-slate-400" />}
+                  {isWorkSubFieldsFrozen && <Lock size={11} className="text-slate-400" />}
                 </label>
                 <div className="relative flex items-center">
                   <input
                     type="text"
-                    disabled={isWorkDetailsFrozen}
+                    disabled={isWorkSubFieldsFrozen}
                     value={driverName}
                     onChange={(e) => {
                       setDriverName(e.target.value);
@@ -938,11 +941,11 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
                     onFocus={() => setShowDriverSuggestions(true)}
                     placeholder="যেমন: ড্রাইভারের নাম"
                     className={`w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-[#1565C0] ${
-                      isWorkDetailsFrozen ? 'bg-slate-100/90 text-slate-600 cursor-not-allowed font-medium' : ''
+                      isWorkSubFieldsFrozen ? 'bg-slate-100/90 text-slate-600 cursor-not-allowed font-medium' : ''
                     }`}
                   />
                 </div>
-                {!isWorkDetailsFrozen && showDriverSuggestions && driverSuggestions.length > 0 && (
+                {!isWorkSubFieldsFrozen && showDriverSuggestions && driverSuggestions.length > 0 && (
                   <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-36 overflow-y-auto divide-y divide-slate-100">
                     {driverSuggestions.map((item, idx) => (
                       <button
@@ -969,12 +972,12 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
                     <Briefcase size={12} className="text-[#1565C0]" />
                     <span>বেড</span>
                   </span>
-                  {isWorkDetailsFrozen && <Lock size={11} className="text-slate-400" />}
+                  {isWorkSubFieldsFrozen && <Lock size={11} className="text-slate-400" />}
                 </label>
                 <div className="relative flex items-center">
                   <input
                     type="text"
-                    disabled={isWorkDetailsFrozen}
+                    disabled={isWorkSubFieldsFrozen}
                     value={trolleyBed}
                     onChange={(e) => {
                       setTrolleyBed(e.target.value);
@@ -983,11 +986,11 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
                     onFocus={() => setShowTrolleyBedSuggestions(true)}
                     placeholder="যেমন: বেড সাইজ / তথ্য"
                     className={`w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-[#1565C0] ${
-                      isWorkDetailsFrozen ? 'bg-slate-100/90 text-slate-600 cursor-not-allowed font-medium' : ''
+                      isWorkSubFieldsFrozen ? 'bg-slate-100/90 text-slate-600 cursor-not-allowed font-medium' : ''
                     }`}
                   />
                 </div>
-                {!isWorkDetailsFrozen && showTrolleyBedSuggestions && trolleyBedSuggestions.length > 0 && (
+                {!isWorkSubFieldsFrozen && showTrolleyBedSuggestions && trolleyBedSuggestions.length > 0 && (
                   <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-36 overflow-y-auto divide-y divide-slate-100">
                     {trolleyBedSuggestions.map((item, idx) => (
                       <button

@@ -48,6 +48,10 @@ export interface GroupedHisab {
   totalDue: number;
   totalQty: number;
   itemCount: number;
+  minDate?: string;
+  maxDate?: string;
+  dateCount?: number;
+  ymd?: string;
   items: VehicleHisab[];
 }
 
@@ -57,6 +61,10 @@ export interface DatabaseTotals {
   totalDue: number;
   totalQty: number;
   totalCount: number;
+  minDate?: string;
+  maxDate?: string;
+  dateCount?: number;
+  ymd?: string;
 }
 
 export interface CustomerFilter {

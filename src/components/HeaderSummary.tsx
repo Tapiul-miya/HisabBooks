@@ -11,6 +11,10 @@ interface HeaderSummaryProps {
   totalPaid: number;
   totalDue: number;
   totalQty?: number;
+  minDate?: string;
+  maxDate?: string;
+  dateCount?: number;
+  ymd?: string;
   onExportPdf: () => void;
   onShowBackup: () => void;
   onShowAbout: () => void;
@@ -22,6 +26,10 @@ export const HeaderSummary: React.FC<HeaderSummaryProps> = ({
   totalPaid,
   totalDue,
   totalQty = 0,
+  minDate,
+  maxDate,
+  dateCount,
+  ymd,
   onExportPdf,
   onShowBackup,
   onShowAbout,
@@ -35,7 +43,7 @@ export const HeaderSummary: React.FC<HeaderSummaryProps> = ({
 
   // Calculate formatted Qty based on selected mode
   const formattedQtyDisplay = useMemo(() => {
-    if (totalQty === 0) return '0';
+    if (totalQty === 0 && qtyMode !== 'ymd') return '0';
 
     switch (qtyMode) {
       case 'bigha': {
@@ -51,8 +59,15 @@ export const HeaderSummary: React.FC<HeaderSummaryProps> = ({
         }
       }
       case 'ymd': {
-        // totalQty is total days -> converts to 01Y-02M-15D
-        return Utils.formatDaysToYMD(totalQty);
+        // Calculate YMD strictly based on dates
+        if (ymd && ymd !== '00D') return ymd;
+        if (typeof dateCount === 'number' && dateCount > 0) {
+          return Utils.formatDaysToYMD(dateCount);
+        }
+        if (minDate && maxDate && minDate.trim() && maxDate.trim()) {
+          return Utils.calculateYMDFromStartEnd(minDate, maxDate);
+        }
+        return '00D';
       }
       case 'hour': {
         // totalQty is minutes -> converts to 00H:00M
@@ -64,7 +79,7 @@ export const HeaderSummary: React.FC<HeaderSummaryProps> = ({
       default:
         return Utils.toCleanString(totalQty);
     }
-  }, [totalQty, qtyMode]);
+  }, [totalQty, qtyMode, ymd, dateCount, minDate, maxDate]);
 
   const modeLabel = useMemo(() => {
     switch (qtyMode) {
@@ -75,6 +90,18 @@ export const HeaderSummary: React.FC<HeaderSummaryProps> = ({
       default: return '';
     }
   }, [qtyMode]);
+
+  // Display SQL calculated YMD value - strictly counts dates only
+  const displayYMD = useMemo(() => {
+    if (ymd && ymd !== '00D') return ymd;
+    if (typeof dateCount === 'number' && dateCount > 0) {
+      return Utils.formatDaysToYMD(dateCount);
+    }
+    if (minDate && maxDate && minDate.trim() && maxDate.trim()) {
+      return Utils.calculateYMDFromStartEnd(minDate, maxDate);
+    }
+    return '00D';
+  }, [ymd, dateCount, minDate, maxDate]);
 
   return (
     <header className="bg-[#1B5E20] text-white px-3 sm:px-4 pt-2.5 pb-2 shadow-md sticky top-0 z-45 flex flex-col gap-2 w-full max-w-full">
@@ -170,10 +197,10 @@ export const HeaderSummary: React.FC<HeaderSummaryProps> = ({
         </div>
       </div>
 
-      {/* Bottom Summary Bar: Qty, Bill, Paid, Due */}
-      <div className="grid grid-cols-4 items-center bg-emerald-950/50 px-2 py-1.5 rounded-xl border border-emerald-300/25 text-xs">
+      {/* Bottom Summary Bar: Qty, (YMD), Bill, Paid, Due */}
+      <div className="grid grid-cols-5 items-center bg-emerald-950/50 px-1 sm:px-2 py-1.5 rounded-xl border border-emerald-300/25 text-xs">
         {/* 1. Total Qty (Clickable with Dropdown for Bigha, YMD, Hour, Trip calculations) */}
-        <div className="relative text-center px-1 flex flex-col justify-center min-w-0">
+        <div className="relative text-center px-0.5 flex flex-col justify-center min-w-0">
           <button
             type="button"
             id="qty-calculation-trigger-btn"
@@ -183,9 +210,9 @@ export const HeaderSummary: React.FC<HeaderSummaryProps> = ({
           >
             <div className="flex items-center space-x-0.5 text-[10px] text-emerald-200/90 font-medium leading-tight">
               <span>Qty{modeLabel ? ` (${modeLabel})` : ''}</span>
-              <ChevronDown size={11} className="text-emerald-300 opacity-70 group-hover:opacity-100 transition-opacity" />
+              <ChevronDown size={10} className="text-emerald-300 opacity-70 group-hover:opacity-100 transition-opacity shrink-0" />
             </div>
-            <div className="font-bold text-[#A7F3D0] text-[11px] sm:text-[13px] leading-tight break-words whitespace-normal max-w-full">
+            <div className="font-bold text-[#A7F3D0] text-[10.5px] sm:text-[12px] leading-tight break-words whitespace-normal max-w-full">
               {formattedQtyDisplay}
             </div>
           </button>
@@ -197,7 +224,7 @@ export const HeaderSummary: React.FC<HeaderSummaryProps> = ({
                 className="fixed inset-0 z-50"
                 onClick={() => setShowQtyMenu(false)}
               ></div>
-              <div className="absolute left-0 sm:left-auto top-full mt-2 w-52 sm:w-56 bg-white rounded-2xl shadow-2xl border border-slate-200 z-55 text-slate-800 text-xs overflow-hidden py-1.5 animate-in fade-in zoom-in-95 duration-150">
+              <div className="absolute left-0 sm:left-auto top-full mt-2 w-52 sm:w-56 bg-white rounded-2xl shadow-2xl border border-slate-200 z-55 text-slate-800 text-xs overflow-hidden py-1.5 animate-in fade-in zoom-in-95 duration-150 text-left">
                 <div className="px-3 py-1.5 border-b border-slate-100 font-bold text-slate-500 text-[10px] uppercase tracking-wider flex items-center justify-between">
                   <span>Qty হিসাব / রূপান্তর</span>
                   <Calculator size={13} className="text-[#1B5E20]" />
@@ -243,7 +270,7 @@ export const HeaderSummary: React.FC<HeaderSummaryProps> = ({
                     <span className="text-base">📅</span>
                     <div>
                       <div className="font-semibold text-xs">Calculate YMD</div>
-                      <div className="text-[10px] text-slate-500">বছর-মাস-দিন (01Y-02M-15D)</div>
+                      <div className="text-[10px] text-slate-500">বছর-মাস-দিন ({displayYMD})</div>
                     </div>
                   </div>
                   {qtyMode === 'ymd' && <Check size={14} className="text-[#1B5E20] shrink-0" />}
@@ -318,26 +345,43 @@ export const HeaderSummary: React.FC<HeaderSummaryProps> = ({
           )}
         </div>
 
-        {/* 2. Total Bill */}
-        <div className="text-center px-1 flex flex-col justify-center min-w-0 border-l border-white/20">
+        {/* 2. SQL Calculated YMD Column */}
+        <div
+          className="text-center px-0.5 flex flex-col justify-center min-w-0 border-l border-white/20"
+          title={
+            minDate && maxDate && minDate.trim() && maxDate.trim()
+              ? `SQL তারিখ গণনা: ${minDate} থেকে ${maxDate} (${dateCount || 0} টি ভিন্ন দিন)`
+              : 'তারিখের পরিসীমা (YMD)'
+          }
+        >
+          <div className="text-[10px] text-emerald-200/90 font-medium leading-tight whitespace-nowrap">
+            (YMD)
+          </div>
+          <div className="font-bold text-[#FED7AA] text-[10.5px] sm:text-[12px] leading-tight break-words whitespace-normal">
+            {displayYMD}
+          </div>
+        </div>
+
+        {/* 3. Total Bill */}
+        <div className="text-center px-0.5 flex flex-col justify-center min-w-0 border-l border-white/20">
           <div className="text-[10px] text-emerald-200/90 font-medium leading-tight">Bill</div>
-          <div className="font-bold text-white text-[12px] sm:text-[13px] leading-tight break-words whitespace-normal">
+          <div className="font-bold text-white text-[11px] sm:text-[12.5px] leading-tight break-words whitespace-normal">
             ৳{Utils.toCleanString(totalBill)}
           </div>
         </div>
 
-        {/* 3. Total Paid */}
-        <div className="text-center px-1 flex flex-col justify-center min-w-0 border-l border-white/20">
+        {/* 4. Total Paid */}
+        <div className="text-center px-0.5 flex flex-col justify-center min-w-0 border-l border-white/20">
           <div className="text-[10px] text-emerald-200/90 font-medium leading-tight">Paid</div>
-          <div className="font-bold text-[#69F0AE] text-[12px] sm:text-[13px] leading-tight break-words whitespace-normal">
+          <div className="font-bold text-[#69F0AE] text-[11px] sm:text-[12.5px] leading-tight break-words whitespace-normal">
             ৳{Utils.toCleanString(totalPaid)}
           </div>
         </div>
 
-        {/* 4. Total Due */}
-        <div className="text-center px-1 flex flex-col justify-center min-w-0 border-l border-white/20">
+        {/* 5. Total Due */}
+        <div className="text-center px-0.5 flex flex-col justify-center min-w-0 border-l border-white/20">
           <div className="text-[10px] text-emerald-200/90 font-medium leading-tight">Due</div>
-          <div className="font-bold text-[#FF8A80] text-[12px] sm:text-[13px] leading-tight break-words whitespace-normal">
+          <div className="font-bold text-[#FF8A80] text-[11px] sm:text-[12.5px] leading-tight break-words whitespace-normal">
             ৳{Utils.toCleanString(totalDue)}
           </div>
         </div>

@@ -103,6 +103,14 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
   const totalPaid = totals?.totalPaid ?? groupedList.reduce((acc, g) => acc + g.totalPaid, 0);
   const totalDue = totals?.totalDue ?? groupedList.reduce((acc, g) => acc + g.totalDue, 0);
   const totalQty = totals?.totalQty ?? groupedList.reduce((acc, g) => acc + (g.totalQty || 0), 0);
+  const totalDateCount = totals?.dateCount ?? (() => {
+    const dates = new Set<string>();
+    groupedList.forEach(g => {
+      if (g.date) dates.add(g.date);
+      if (g.items) g.items.forEach(it => { if (it.date) dates.add(it.date); });
+    });
+    return dates.size;
+  })();
 
   // Progressive infinite scroll handler
   const handleScroll = useCallback((e: React.UIEvent<HTMLElement>) => {
@@ -130,6 +138,10 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
           totalPaid={totalPaid}
           totalDue={totalDue}
           totalQty={totalQty}
+          minDate={totals?.minDate}
+          maxDate={totals?.maxDate}
+          dateCount={totalDateCount}
+          ymd={totals?.ymd}
           onExportPdf={onExportPdf}
           onShowBackup={onShowBackup}
           onShowAbout={onShowAbout}

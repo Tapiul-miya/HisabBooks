@@ -1,6 +1,7 @@
 import initSqlJs, { Database, SqlJsStatic } from 'sql.js';
 import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
 import { VehicleHisab, GroupByMode, GroupedHisab, DatabaseTotals, HisabQueryResult, CustomerFilter } from '../types';
+import { Utils } from '../util/utils';
 
 const DB_STORE_NAME = 'sqlite_db_store';
 const DB_FILE_KEY = 'hisabbook.sqlite';
@@ -500,7 +501,10 @@ export class HisabStorage {
         COALESCE(SUM(paid), 0) AS totalPaid,
         COALESCE(SUM(due), 0) AS totalDue,
         COALESCE(SUM(qty), 0) AS totalQty,
-        COUNT(id) AS totalCount
+        COUNT(id) AS totalCount,
+        MIN(date) AS minDate,
+        MAX(date) AS maxDate,
+        COUNT(DISTINCT date) AS dateCount
       FROM hisab
     `;
 
@@ -526,17 +530,36 @@ export class HisabStorage {
       totalPaid: 0,
       totalDue: 0,
       totalQty: 0,
-      totalCount: 0
+      totalCount: 0,
+      minDate: '',
+      maxDate: '',
+      dateCount: 0,
+      ymd: '00D'
     };
 
     if (stmt.step()) {
-      const row = stmt.getAsObject() as Record<string, number>;
+      const row = stmt.getAsObject() as Record<string, unknown>;
+      const minDate = String(row.minDate || '');
+      const maxDate = String(row.maxDate || '');
+      const dateCount = Number(row.dateCount || 0);
+
+      let ymd = '00D';
+      if (dateCount > 0) {
+        ymd = Utils.formatDaysToYMD(dateCount);
+      } else if (minDate && maxDate && minDate.trim() && maxDate.trim()) {
+        ymd = Utils.calculateYMDFromStartEnd(minDate, maxDate);
+      }
+
       totals = {
         totalBill: Number(row.totalBill || 0),
         totalPaid: Number(row.totalPaid || 0),
         totalDue: Number(row.totalDue || 0),
         totalQty: Number(row.totalQty || 0),
-        totalCount: Number(row.totalCount || 0)
+        totalCount: Number(row.totalCount || 0),
+        minDate,
+        maxDate,
+        dateCount,
+        ymd
       };
     }
     stmt.free();
@@ -607,7 +630,10 @@ export class HisabStorage {
         COALESCE(SUM(paid), 0) AS totalPaid,
         COALESCE(SUM(due), 0) AS totalDue,
         COALESCE(SUM(qty), 0) AS totalQty,
-        COUNT(id) AS totalCount
+        COUNT(id) AS totalCount,
+        MIN(date) AS minDate,
+        MAX(date) AS maxDate,
+        COUNT(DISTINCT date) AS dateCount
       FROM hisab
       ${whereClause}
     `;
@@ -622,17 +648,36 @@ export class HisabStorage {
       totalPaid: 0,
       totalDue: 0,
       totalQty: 0,
-      totalCount: 0
+      totalCount: 0,
+      minDate: '',
+      maxDate: '',
+      dateCount: 0,
+      ymd: '00D'
     };
 
     if (totalsStmt.step()) {
-      const row = totalsStmt.getAsObject() as Record<string, number>;
+      const row = totalsStmt.getAsObject() as Record<string, unknown>;
+      const minDate = String(row.minDate || '');
+      const maxDate = String(row.maxDate || '');
+      const dateCount = Number(row.dateCount || 0);
+
+      let ymd = '00D';
+      if (dateCount > 0) {
+        ymd = Utils.formatDaysToYMD(dateCount);
+      } else if (minDate && maxDate && minDate.trim() && maxDate.trim()) {
+        ymd = Utils.calculateYMDFromStartEnd(minDate, maxDate);
+      }
+
       totals = {
         totalBill: Number(row.totalBill || 0),
         totalPaid: Number(row.totalPaid || 0),
         totalDue: Number(row.totalDue || 0),
         totalQty: Number(row.totalQty || 0),
-        totalCount: Number(row.totalCount || 0)
+        totalCount: Number(row.totalCount || 0),
+        minDate,
+        maxDate,
+        dateCount,
+        ymd
       };
     }
     totalsStmt.free();
@@ -652,6 +697,9 @@ export class HisabStorage {
           COALESCE(SUM(due), 0) AS totalDue,
           COALESCE(SUM(qty), 0) AS totalQty,
           COUNT(id) AS itemCount,
+          MIN(date) AS minDate,
+          MAX(date) AS maxDate,
+          COUNT(DISTINCT date) AS dateCount,
           MIN(date) AS earliestDate,
           MIN(id) AS earliestId
         FROM hisab
@@ -668,6 +716,9 @@ export class HisabStorage {
           COALESCE(SUM(due), 0) AS totalDue,
           COALESCE(SUM(qty), 0) AS totalQty,
           COUNT(id) AS itemCount,
+          MIN(date) AS minDate,
+          MAX(date) AS maxDate,
+          COUNT(DISTINCT date) AS dateCount,
           MIN(id) AS earliestId
         FROM hisab
         ${whereClause}
@@ -686,6 +737,17 @@ export class HisabStorage {
 
     while (groupStmt.step()) {
       const row = groupStmt.getAsObject() as Record<string, unknown>;
+      const minDate = String(row.minDate || '');
+      const maxDate = String(row.maxDate || '');
+      const dateCount = Number(row.dateCount || 0);
+
+      let ymd = '00D';
+      if (dateCount > 0) {
+        ymd = Utils.formatDaysToYMD(dateCount);
+      } else if (minDate && maxDate && minDate.trim() && maxDate.trim()) {
+        ymd = Utils.calculateYMDFromStartEnd(minDate, maxDate);
+      }
+
       const groupedItem: GroupedHisab = {
         name: isUserDetails ? String(row.name || '') : '',
         date: !isUserDetails ? String(row.date || '') : '',
@@ -698,6 +760,10 @@ export class HisabStorage {
         totalDue: Number(row.totalDue || 0),
         totalQty: Number(row.totalQty || 0),
         itemCount: Number(row.itemCount || 0),
+        minDate,
+        maxDate,
+        dateCount,
+        ymd,
         items: []
       };
 

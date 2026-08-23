@@ -60,7 +60,10 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
   } else if (type.includes('bigha')) {
     qtyText = `বিঘা: ${Utils.formatKathaToBigha(groupedHisab.totalQty)}`;
   } else if (type.includes('monthly') || type.includes('month')) {
-    qtyText = `বছর: ${Utils.formatDaysToYMD(groupedHisab.totalQty)}`;
+    const ymdVal = groupedHisab.ymd && groupedHisab.ymd !== '00D' 
+      ? groupedHisab.ymd 
+      : Utils.formatDaysToYMD(groupedHisab.totalQty);
+    qtyText = `বছর: ${ymdVal}`;
   }
 
   const getHisabTypeLabel = (typeKey: string) => {
