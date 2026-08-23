@@ -181,13 +181,13 @@ export const SingleGroupPdfPreviewModal: React.FC<SingleGroupPdfPreviewModalProp
                     >
                       {isDateWorkMode ? (
                         <>
-                          <td className="p-3 font-semibold text-slate-900" style={{ color: '#0f172a' }}>{item.name || '-'}</td>
-                          <td className="p-3 text-slate-600 font-mono text-xs" style={{ color: '#475569' }}>{item.stm || '-'}</td>
+                          <td className="p-3 font-semibold text-slate-900 break-words" style={{ color: '#0f172a' }}>{item.name || '-'}</td>
+                          <td className="p-3 text-slate-600 font-mono text-xs break-words whitespace-pre-wrap" style={{ color: '#475569' }}>{item.stm || '-'}</td>
                         </>
                       ) : (
                         <>
                           <td className="p-3 whitespace-nowrap text-slate-600 font-medium" style={{ color: '#475569' }}>{item.date || '-'}</td>
-                          <td className="p-3 text-slate-600 font-mono text-xs" style={{ color: '#475569' }}>{item.stm || '-'}</td>
+                          <td className="p-3 text-slate-600 font-mono text-xs break-words whitespace-pre-wrap" style={{ color: '#475569' }}>{item.stm || '-'}</td>
                         </>
                       )}
                       <td className="p-3 whitespace-nowrap text-slate-700 text-center" style={{ color: '#334155' }}>{item.unit || '-'}</td>

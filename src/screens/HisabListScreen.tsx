@@ -160,7 +160,7 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
                 <span className="p-1 bg-emerald-700 text-white rounded-md shrink-0">
                   <UserCheck size={12} />
                 </span>
-                <div className="text-[11px] sm:text-xs text-emerald-950 truncate leading-tight">
+                <div className="text-[11px] sm:text-xs text-emerald-950 break-words whitespace-normal leading-tight">
                   <span className="font-bold text-emerald-900">{customerFilter.name || 'বেনামী'}</span>
                   {customerFilter.mobile && <span className="text-emerald-800 ml-1">({customerFilter.mobile})</span>}
                   {customerFilter.hisabType && (
@@ -169,7 +169,7 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
                     </span>
                   )}
                   {customerFilter.address && (
-                    <span className="text-emerald-700 text-[10px] ml-1 hidden sm:inline truncate">
+                    <span className="text-emerald-700 text-[10px] ml-1 break-words">
                       • {customerFilter.address}
                     </span>
                   )}

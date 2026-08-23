@@ -622,4 +622,72 @@ export namespace Utils {
     if (k.includes('other')) return 'অন্যান্য';
     return typeKey || 'সাধারণ';
   }
+
+  export interface ParsedWorkDetails {
+    work: string;
+    year: string;
+    session: string;
+    manager: string;
+    vehicle: string;
+    driver: string;
+    trolleyBed: string;
+  }
+
+  export function parseWorkDetails(raw: string): ParsedWorkDetails {
+    if (!raw) {
+      return { work: '', year: '', session: '', manager: '', vehicle: '', driver: '', trolleyBed: '' };
+    }
+    const parts = raw.split('|').map(p => p.trim());
+
+    const isYearStr = (s: string) => /[\d0-9০-৯]{4}/.test(s) || /^(19|20)\d{2}/.test(s);
+    const isSessionStr = (s: string) => /সেশন|session|সিজন|season/i.test(s);
+
+    const work = parts[0] || '';
+    let year = parts[1] || '';
+    let session = parts[2] || '';
+    let manager = parts[3] || '';
+    let vehicle = parts[4] || '';
+    let driver = parts[5] || '';
+    let trolleyBed = parts[6] || '';
+
+    // If unpiped legacy string (e.g. "মাটি কাটা | আব্দুর রহিম | টাটা ট্রাক" where pos 1 is not year or session)
+    if (parts.length > 1 && parts.length < 7) {
+      const p1 = parts[1] || '';
+      if (p1 && !isYearStr(p1) && !isSessionStr(p1)) {
+        year = '';
+        session = '';
+        manager = parts[1] || '';
+        vehicle = parts[2] || '';
+        driver = parts[3] || '';
+        trolleyBed = parts[4] || '';
+      }
+    }
+
+    return { work, year, session, manager, vehicle, driver, trolleyBed };
+  }
+
+  export function formatWorkDetails(
+    work: string,
+    year: string,
+    session: string,
+    manager: string,
+    vehicle: string,
+    driver: string,
+    bed: string
+  ): string {
+    const parts = [
+      (work || '').trim(),
+      (year || '').trim(),
+      (session || '').trim(),
+      (manager || '').trim(),
+      (vehicle || '').trim(),
+      (driver || '').trim(),
+      (bed || '').trim()
+    ];
+    while (parts.length > 0 && parts[parts.length - 1] === '') {
+      parts.pop();
+    }
+    return parts.join(' | ');
+  }
 }
+

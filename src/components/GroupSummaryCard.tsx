@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Copy, ChevronDown, ChevronUp, Phone, MapPin, FileText, Pencil, Filter } from 'lucide-react';
+import { Plus, ChevronDown, ChevronUp, Phone, MapPin, FileText, Pencil, Filter } from 'lucide-react';
 import { GroupedHisab, GroupByMode, VehicleHisab, CustomerFilter } from '../types';
 import { GroupChildItemRow } from './GroupChildItemRow';
 import { Utils } from '../util/utils';
@@ -72,18 +72,23 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
       ? `👤 ${groupedHisab.name}`
       : `📅 ${groupedHisab.date}`;
 
+  // Premium, rich gradient depending on Due status and active selection
+  const cardGradient = isDue
+    ? 'bg-gradient-to-b from-[#FFFFFF] via-[#FFFDFD] to-[#FFF5F5] border-rose-400/90 shadow-[0_3px_12px_-2px_rgba(244,63,94,0.12)]'
+    : 'bg-gradient-to-b from-[#FFFFFF] via-[#F8FCF9] to-[#EFFBF4] border-emerald-400/90 shadow-[0_3px_12px_-2px_rgba(16,185,129,0.12)]';
+
   return (
     <>
       <div
-        className={`w-full bg-gradient-to-b from-[#F8FAFC] via-[#F1F5F9] to-[#E2E8F0] rounded-xl border-2 ${borderColor} shadow-xs overflow-hidden transition-all duration-300 ${
-          shouldHighlightParent ? 'animate-blur-float ring-4 ring-blue-400 bg-blue-50/50' : ''
+        className={`w-full rounded-2xl border-2 ${cardGradient} overflow-hidden transition-all duration-300 ${
+          shouldHighlightParent ? 'animate-blur-float ring-4 ring-blue-400 bg-blue-50/70' : ''
         } ${
-          isCustomerFilterActive ? 'ring-3 ring-emerald-500/90 shadow-md' : ''
+          isCustomerFilterActive ? 'ring-3 ring-emerald-600 shadow-lg' : ''
         }`}
       >
         <div
           onClick={onExpandToggle}
-          className="p-3 sm:p-3.5 cursor-pointer select-none"
+          className="p-3.5 sm:p-4 cursor-pointer select-none"
         >
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
@@ -106,7 +111,7 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
                   }`}
                   title="একই নাম, মোবাইল, ঠিকানা ও হিসাবের ধরন অনুযায়ী ফিল্টার করতে ক্লিক করুন"
                 >
-                  <span className="leading-snug break-words">👤 {groupedHisab.name}</span>
+                  <span className="leading-snug break-words whitespace-normal">👤 {groupedHisab.name}</span>
                   <Filter
                     size={13}
                     className={`shrink-0 transition-opacity ${
@@ -117,7 +122,7 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
                   />
                 </button>
               ) : (
-                <h3 className="text-base font-bold text-[#0D1B2A] leading-snug break-words">
+                <h3 className="text-base font-bold text-[#0D1B2A] leading-snug break-words whitespace-normal">
                   {cardTitle}
                 </h3>
               )}
@@ -127,17 +132,17 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
                     <a
                       href={`tel:${groupedHisab.mobile}`}
                       onClick={(e) => e.stopPropagation()}
-                      className="flex items-center space-x-1 text-emerald-700 hover:text-emerald-800 hover:underline active:opacity-75 font-medium cursor-pointer transition-colors"
+                      className="flex items-center space-x-1 text-emerald-700 hover:text-emerald-800 hover:underline active:opacity-75 font-medium cursor-pointer transition-colors break-words"
                       title="সরাসরি কল করুন"
                     >
                       <Phone size={11} className="text-emerald-600 shrink-0" />
-                      <span>{groupedHisab.mobile}</span>
+                      <span className="break-all">{groupedHisab.mobile}</span>
                     </a>
                   )}
                   {groupedHisab.address && (
-                    <span className="flex items-center space-x-1">
-                      <MapPin size={11} className="text-slate-500" />
-                      <span>{groupedHisab.address}</span>
+                    <span className="flex items-center space-x-1 break-words whitespace-normal">
+                      <MapPin size={11} className="text-slate-500 shrink-0" />
+                      <span className="break-words">{groupedHisab.address}</span>
                     </span>
                   )}
                 </div>
@@ -160,10 +165,10 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
                   e.stopPropagation();
                   onCopyClick(groupedHisab);
                 }}
-                className="p-1.5 text-[#0D47A1] hover:bg-blue-50 rounded-lg transition-colors"
-                title="কপি করুন"
+                className="w-3.5 h-3.5 text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-800 rounded-sm shadow-sm hover:shadow active:scale-90 transition-all duration-200 flex items-center justify-center ring-1 ring-blue-500/20"
+                title="নতুন এন্ট্রি যোগ করুন"
               >
-                <Copy size={16} />
+                <Plus size={8} className="stroke-[2.5]" />
               </button>
               {mode === GroupByMode.BY_USER_DETAILS && (
                 <button
@@ -183,11 +188,11 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
             </div>
           </div>
 
-          <div className="flex items-center justify-between mt-1.5 pt-1.5 border-t border-slate-100 text-xs">
-            <div className="min-w-0 pr-2 space-y-1">
+          <div className="flex items-start justify-between mt-1.5 pt-1.5 border-t border-slate-100 text-xs gap-2">
+            <div className="min-w-0 flex-1 space-y-1">
               {groupedHisab.workDetails ? (
                 <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
-                  <span className="bg-[#E3F2FD] text-[#1565C0] text-[11px] font-semibold px-2 py-0.5 rounded truncate inline-block max-w-full">
+                  <span className="bg-[#E3F2FD] text-[#1565C0] text-[11px] font-semibold px-2 py-1 rounded-md break-words whitespace-normal inline-block max-w-full leading-relaxed border border-blue-100">
                     {groupedHisab.workDetails}
                   </span>
                 </div>
@@ -200,7 +205,7 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
               </div>
             </div>
 
-            <div className="bg-amber-50 text-amber-900 border border-amber-200/80 px-2 py-0.5 rounded-md text-[11px] sm:text-xs font-bold shrink-0 text-right shadow-2xs">
+            <div className="bg-amber-50 text-amber-900 border border-amber-200/80 px-2 py-0.5 rounded-md text-[11px] sm:text-xs font-bold shrink-0 text-right shadow-2xs whitespace-normal break-words">
               {qtyText}
             </div>
           </div>
@@ -230,9 +235,9 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
         </div>
 
       {expanded && (
-        <div className="px-2 sm:px-3 pb-3 pt-1.5 bg-[#E2E8F0]/60 border-t border-slate-300/80 max-h-[340px] overflow-y-auto">
-          <div className="text-xs font-bold text-[#0D47A1] mb-2 px-1 py-0.5">
-            বিস্তারিত লেনদেন সমূহ:
+        <div className="px-2.5 sm:px-3.5 pb-3.5 pt-2 bg-gradient-to-b from-[#F1F5F9] to-[#E2E8F0] border-t border-slate-300/80 max-h-[360px] overflow-y-auto">
+          <div className="text-xs font-bold text-[#0D47A1] mb-2 px-1 py-0.5 flex items-center justify-between">
+            <span>বিস্তারিত লেনদেন সমূহ:</span>
           </div>
           <div className="space-y-2">
             {groupedHisab.items.map((item) => (

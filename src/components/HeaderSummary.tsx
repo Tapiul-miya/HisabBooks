@@ -185,7 +185,7 @@ export const HeaderSummary: React.FC<HeaderSummaryProps> = ({
               <span>Qty{modeLabel ? ` (${modeLabel})` : ''}</span>
               <ChevronDown size={11} className="text-emerald-300 opacity-70 group-hover:opacity-100 transition-opacity" />
             </div>
-            <div className="font-bold text-[#A7F3D0] text-[11px] sm:text-[13px] leading-tight truncate max-w-full">
+            <div className="font-bold text-[#A7F3D0] text-[11px] sm:text-[13px] leading-tight break-words whitespace-normal max-w-full">
               {formattedQtyDisplay}
             </div>
           </button>
@@ -321,7 +321,7 @@ export const HeaderSummary: React.FC<HeaderSummaryProps> = ({
         {/* 2. Total Bill */}
         <div className="text-center px-1 flex flex-col justify-center min-w-0 border-l border-white/20">
           <div className="text-[10px] text-emerald-200/90 font-medium leading-tight">Bill</div>
-          <div className="font-bold text-white text-[12px] sm:text-[13px] leading-tight truncate">
+          <div className="font-bold text-white text-[12px] sm:text-[13px] leading-tight break-words whitespace-normal">
             ৳{Utils.toCleanString(totalBill)}
           </div>
         </div>
@@ -329,7 +329,7 @@ export const HeaderSummary: React.FC<HeaderSummaryProps> = ({
         {/* 3. Total Paid */}
         <div className="text-center px-1 flex flex-col justify-center min-w-0 border-l border-white/20">
           <div className="text-[10px] text-emerald-200/90 font-medium leading-tight">Paid</div>
-          <div className="font-bold text-[#69F0AE] text-[12px] sm:text-[13px] leading-tight truncate">
+          <div className="font-bold text-[#69F0AE] text-[12px] sm:text-[13px] leading-tight break-words whitespace-normal">
             ৳{Utils.toCleanString(totalPaid)}
           </div>
         </div>
@@ -337,7 +337,7 @@ export const HeaderSummary: React.FC<HeaderSummaryProps> = ({
         {/* 4. Total Due */}
         <div className="text-center px-1 flex flex-col justify-center min-w-0 border-l border-white/20">
           <div className="text-[10px] text-emerald-200/90 font-medium leading-tight">Due</div>
-          <div className="font-bold text-[#FF8A80] text-[12px] sm:text-[13px] leading-tight truncate">
+          <div className="font-bold text-[#FF8A80] text-[12px] sm:text-[13px] leading-tight break-words whitespace-normal">
             ৳{Utils.toCleanString(totalDue)}
           </div>
         </div>

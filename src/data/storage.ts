@@ -767,35 +767,13 @@ export class HisabStorage {
     const rawList: string[] = [];
     if (res.length > 0 && res[0].values.length > 0) {
       for (const row of res[0].values) {
-        if (row[0]) rawList.push(String(row[0]).trim());
-      }
-    }
-
-    const set = new Set<string>();
-    for (const raw of rawList) {
-      const parts = raw.split('|').map(s => s.trim()).filter(Boolean);
-      if (parts.length === 0) continue;
-      if (parts.length === 1) {
-        set.add(parts[0]);
-        continue;
-      }
-
-      const head = parts[0];
-      const tail = parts.slice(1);
-      const subsetCount = 1 << tail.length; // 2^(tail.length)
-
-      for (let i = 0; i < subsetCount; i++) {
-        const combo = [head];
-        for (let j = 0; j < tail.length; j++) {
-          if ((i & (1 << j)) !== 0) {
-            combo.push(tail[j]);
-          }
+        if (row[0]) {
+          const val = String(row[0]).trim();
+          if (val) rawList.push(val);
         }
-        set.add(combo.join(' | '));
       }
     }
-
-    return Array.from(set).filter(Boolean).sort((a, b) => a.localeCompare(b, 'bn'));
+    return rawList;
   }
 
   /**

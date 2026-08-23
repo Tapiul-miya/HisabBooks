@@ -83,15 +83,7 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
 
   const initialParsedWork = useMemo(() => {
     const raw = (itemToEdit?.workDetails || initialWorkDetails || '').trim();
-    if (!raw) return { work: '', year: '', session: '', manager: '', vehicle: '' };
-    const parts = raw.split('|').map(p => p.trim());
-    return {
-      work: parts[0] || '',
-      year: parts[1] || '',
-      session: parts[2] || '',
-      manager: parts[3] || '',
-      vehicle: parts[4] || ''
-    };
+    return Utils.parseWorkDetails(raw);
   }, [itemToEdit?.workDetails, initialWorkDetails]);
 
   const [name, setName] = useState(itemToEdit?.name || initialName);
@@ -102,18 +94,21 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
   const [session, setSession] = useState(initialParsedWork.session);
   const [managerName, setManagerName] = useState(initialParsedWork.manager);
   const [vehicleName, setVehicleName] = useState(initialParsedWork.vehicle);
+  const [driverName, setDriverName] = useState(initialParsedWork.driver);
+  const [trolleyBed, setTrolleyBed] = useState(initialParsedWork.trolleyBed);
   const [optional, setOptional] = useState(itemToEdit?.optional || '');
 
   const concatenatedWorkDetails = useMemo(() => {
-    const parts = [
-      workDetails.trim(),
-      year.trim(),
-      session.trim(),
-      managerName.trim(),
-      vehicleName.trim()
-    ].filter(Boolean);
-    return parts.join(' | ');
-  }, [workDetails, year, session, managerName, vehicleName]);
+    return Utils.formatWorkDetails(
+      workDetails,
+      year,
+      session,
+      managerName,
+      vehicleName,
+      driverName,
+      trolleyBed
+    );
+  }, [workDetails, year, session, managerName, vehicleName, driverName, trolleyBed]);
 
   const [allEntries, setAllEntries] = useState<VehicleHisab[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -139,6 +134,12 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
 
   const [showVehicleSuggestions, setShowVehicleSuggestions] = useState(false);
   const vehicleContainerRef = useRef<HTMLDivElement>(null);
+
+  const [showDriverSuggestions, setShowDriverSuggestions] = useState(false);
+  const driverContainerRef = useRef<HTMLDivElement>(null);
+
+  const [showTrolleyBedSuggestions, setShowTrolleyBedSuggestions] = useState(false);
+  const trolleyBedContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     HisabStorage.getAll().then(data => {
@@ -174,6 +175,12 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
       }
       if (vehicleContainerRef.current && !vehicleContainerRef.current.contains(target)) {
         setShowVehicleSuggestions(false);
+      }
+      if (driverContainerRef.current && !driverContainerRef.current.contains(target)) {
+        setShowDriverSuggestions(false);
+      }
+      if (trolleyBedContainerRef.current && !trolleyBedContainerRef.current.contains(target)) {
+        setShowTrolleyBedSuggestions(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -325,6 +332,34 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
     return list.filter(v => v.toLowerCase().includes(query)).slice(0, 8);
   }, [allEntries, vehicleName]);
 
+  const driverSuggestions = useMemo(() => {
+    const query = driverName.trim().toLowerCase();
+    if (!query) return [];
+    const set = new Set<string>();
+    for (const item of allEntries) {
+      if (item.workDetails && item.workDetails.includes('|')) {
+        const parts = item.workDetails.split('|').map(p => p.trim());
+        if (parts[5]) set.add(parts[5]);
+      }
+    }
+    const list = Array.from(set).filter(Boolean);
+    return list.filter(d => d.toLowerCase().includes(query)).slice(0, 8);
+  }, [allEntries, driverName]);
+
+  const trolleyBedSuggestions = useMemo(() => {
+    const query = trolleyBed.trim().toLowerCase();
+    if (!query) return [];
+    const set = new Set<string>();
+    for (const item of allEntries) {
+      if (item.workDetails && item.workDetails.includes('|')) {
+        const parts = item.workDetails.split('|').map(p => p.trim());
+        if (parts[6]) set.add(parts[6]);
+      }
+    }
+    const list = Array.from(set).filter(Boolean);
+    return list.filter(b => b.toLowerCase().includes(query)).slice(0, 8);
+  }, [allEntries, trolleyBed]);
+
   const handleSelectSuggestion = (item: VehicleHisab) => {
     if (item.name) setName(item.name);
 
@@ -358,6 +393,8 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
       setSession(parts[2] || '');
       setManagerName(parts[3] || '');
       setVehicleName(parts[4] || '');
+      setDriverName(parts[5] || '');
+      setTrolleyBed(parts[6] || '');
     } else {
       setWorkDetails(val);
     }
@@ -879,6 +916,96 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
                   </div>
                 )}
               </div>
+
+              {/* ড্রাইভার নাম */}
+              <div className="space-y-1 relative" ref={driverContainerRef}>
+                <label className="text-[11px] font-semibold text-slate-600 flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <User size={12} className="text-[#1565C0]" />
+                    <span>ড্রাইভার নাম</span>
+                  </span>
+                  {isWorkDetailsFrozen && <Lock size={11} className="text-slate-400" />}
+                </label>
+                <div className="relative flex items-center">
+                  <input
+                    type="text"
+                    disabled={isWorkDetailsFrozen}
+                    value={driverName}
+                    onChange={(e) => {
+                      setDriverName(e.target.value);
+                      setShowDriverSuggestions(true);
+                    }}
+                    onFocus={() => setShowDriverSuggestions(true)}
+                    placeholder="যেমন: ড্রাইভারের নাম"
+                    className={`w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-[#1565C0] ${
+                      isWorkDetailsFrozen ? 'bg-slate-100/90 text-slate-600 cursor-not-allowed font-medium' : ''
+                    }`}
+                  />
+                </div>
+                {!isWorkDetailsFrozen && showDriverSuggestions && driverSuggestions.length > 0 && (
+                  <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-36 overflow-y-auto divide-y divide-slate-100">
+                    {driverSuggestions.map((item, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          setDriverName(item);
+                          setShowDriverSuggestions(false);
+                        }}
+                        className="w-full text-left px-2.5 py-1.5 text-xs text-slate-700 hover:bg-blue-50 active:bg-blue-100 flex items-center justify-between transition-colors"
+                      >
+                        <span>{item}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* বেড */}
+              <div className="space-y-1 relative" ref={trolleyBedContainerRef}>
+                <label className="text-[11px] font-semibold text-slate-600 flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <Briefcase size={12} className="text-[#1565C0]" />
+                    <span>বেড</span>
+                  </span>
+                  {isWorkDetailsFrozen && <Lock size={11} className="text-slate-400" />}
+                </label>
+                <div className="relative flex items-center">
+                  <input
+                    type="text"
+                    disabled={isWorkDetailsFrozen}
+                    value={trolleyBed}
+                    onChange={(e) => {
+                      setTrolleyBed(e.target.value);
+                      setShowTrolleyBedSuggestions(true);
+                    }}
+                    onFocus={() => setShowTrolleyBedSuggestions(true)}
+                    placeholder="যেমন: বেড সাইজ / তথ্য"
+                    className={`w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-[#1565C0] ${
+                      isWorkDetailsFrozen ? 'bg-slate-100/90 text-slate-600 cursor-not-allowed font-medium' : ''
+                    }`}
+                  />
+                </div>
+                {!isWorkDetailsFrozen && showTrolleyBedSuggestions && trolleyBedSuggestions.length > 0 && (
+                  <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-36 overflow-y-auto divide-y divide-slate-100">
+                    {trolleyBedSuggestions.map((item, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          setTrolleyBed(item);
+                          setShowTrolleyBedSuggestions(false);
+                        }}
+                        className="w-full text-left px-2.5 py-1.5 text-xs text-slate-700 hover:bg-blue-50 active:bg-blue-100 flex items-center justify-between transition-colors"
+                      >
+                        <span>{item}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Live Concatenated Work Details Preview Box */}
@@ -1124,58 +1251,6 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
               </div>
             )}
           </div>
-
-          {/* Bed Input for Trip Hisab */}
-          {currentTypeKey === 'trip' && (
-            <div className="space-y-1 relative" ref={bedContainerRef}>
-              <label className="text-xs font-medium text-slate-600">
-                বেড
-              </label>
-              <input
-                type="text"
-                value={optional}
-                onFocus={() => setShowBedSuggestions(true)}
-                onChange={(e) => {
-                  setOptional(e.target.value);
-                  setShowBedSuggestions(true);
-                }}
-                placeholder="বেডের বিবরণ লিখুন..."
-                className="w-full bg-[#F8FAFC] border border-slate-300 rounded-xl px-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-[#00796B]"
-              />
-
-              {/* Bed Suggestions Dropdown */}
-              {showBedSuggestions && bedSuggestions.length > 0 && (
-                <div className="absolute left-0 right-0 top-full mt-1 bg-white rounded-xl shadow-xl border border-teal-200 z-50 max-h-52 overflow-y-auto divide-y divide-slate-100">
-                  <div className="px-3 py-1.5 bg-teal-50/80 text-[11px] font-bold text-[#00796B] flex items-center justify-between border-b border-teal-100 sticky top-0 z-10 backdrop-blur-sm">
-                    <span>পূর্বের বেডের তালিকা ({bedSuggestions.length})</span>
-                    <button
-                      type="button"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        setShowBedSuggestions(false);
-                      }}
-                      className="text-slate-400 hover:text-slate-600 font-bold px-1"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                  {bedSuggestions.map((item, idx) => (
-                    <div
-                      key={idx}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        handleSelectBedSuggestion(item);
-                      }}
-                      className="p-2.5 hover:bg-teal-50/70 active:bg-teal-100 cursor-pointer transition-colors flex items-center gap-2 text-sm text-slate-800 font-medium"
-                    >
-                      <Layers size={14} className="text-[#00796B] shrink-0" />
-                      <span>{item}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
 
           {/* STM / Duration / Qty input */}
           <div className="space-y-1">
