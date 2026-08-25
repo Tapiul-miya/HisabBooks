@@ -4,16 +4,36 @@ import {
   signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
+  signInWithCredential,
   GoogleAuthProvider,
   onAuthStateChanged,
   User,
   signOut
 } from 'firebase/auth';
 import { Capacitor } from '@capacitor/core';
+import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
+
+// Initialize Native GoogleAuth safely
+let isGoogleAuthInitialized = false;
+export const ensureGoogleAuthInitialized = async () => {
+  if (isGoogleAuthInitialized || typeof window === 'undefined') return;
+  try {
+    if (Capacitor.isNativePlatform() && GoogleAuth && typeof GoogleAuth.initialize === 'function') {
+      await GoogleAuth.initialize({
+        clientId: firebaseConfig.oAuthClientId,
+        scopes: ['profile', 'email', 'https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/drive.appdata'],
+        grantOfflineAccess: true
+      });
+      isGoogleAuthInitialized = true;
+    }
+  } catch (err) {
+    console.warn('GoogleAuth.initialize info:', err);
+  }
+};
 
 const provider = new GoogleAuthProvider();
 provider.addScope('https://www.googleapis.com/auth/drive.file');
@@ -86,25 +106,42 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
     try {
       isSigningIn = true;
 
-      // For native devices, try signInWithPopup first or fallback to redirect smoothly
+      // 1. For Native Android / iOS, use Capacitor GoogleAuth (Native Account Picker)
       if (Capacitor.isNativePlatform()) {
         try {
-          const result = await signInWithPopup(auth, provider);
-          const credential = GoogleAuthProvider.credentialFromResult(result);
-          const token = credential?.accessToken || (await result.user.getIdToken());
-          if (token) {
-            cachedAccessToken = token;
-            localStorage.setItem('google_drive_access_token', cachedAccessToken);
-            return { user: result.user, accessToken: cachedAccessToken };
+          await ensureGoogleAuthInitialized();
+          const googleUser = await GoogleAuth.signIn();
+          if (googleUser && googleUser.authentication) {
+            const idToken = googleUser.authentication.idToken;
+            const accessToken = googleUser.authentication.accessToken || idToken;
+
+            // Link with Firebase Auth using ID token
+            let firebaseUser = auth.currentUser;
+            if (idToken) {
+              const credential = GoogleAuthProvider.credential(idToken, accessToken);
+              const userCred = await signInWithCredential(auth, credential);
+              firebaseUser = userCred.user;
+            }
+
+            if (accessToken) {
+              cachedAccessToken = accessToken;
+              localStorage.setItem('google_drive_access_token', cachedAccessToken);
+            }
+
+            if (firebaseUser) {
+              return { user: firebaseUser, accessToken: cachedAccessToken || '' };
+            }
           }
-        } catch (popupErr: any) {
-          console.log('Native popup fallback to redirect:', popupErr?.message);
-          await signInWithRedirect(auth, provider);
-          return null;
+        } catch (nativeErr: any) {
+          console.warn('Native GoogleAuth error, attempting fallback:', nativeErr);
+          // If user cancelled, don't throw error
+          if (nativeErr?.message?.includes('cancel') || nativeErr?.code === '13' || nativeErr === 'user cancelled') {
+            return null;
+          }
         }
       }
 
-      // For web/preview environments, try popup first
+      // 2. For Web / Browser environment or native fallback
       try {
         const result = await signInWithPopup(auth, provider);
         const credential = GoogleAuthProvider.credentialFromResult(result);
@@ -161,6 +198,13 @@ export const setCachedAccessToken = (token: string | null) => {
 
 export const logoutGoogle = async () => {
   try {
+    if (Capacitor.isNativePlatform()) {
+      try {
+        await GoogleAuth.signOut();
+      } catch (nativeErr) {
+        console.warn('Native signOut warning:', nativeErr);
+      }
+    }
     await signOut(auth);
   } catch (e) {
     console.warn('Sign out warning:', e);
