@@ -168,28 +168,8 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
             return null;
           }
 
-          // If native sign in failed due to DEVELOPER_ERROR (10) / SHA-1 / Config issue, attempt Web/Browser fallback
-          console.log('Native GoogleAuth failed, trying browser popup/redirect fallback...');
-          try {
-            const webResult = await signInWithPopup(auth, provider);
-            const credential = GoogleAuthProvider.credentialFromResult(webResult);
-            const token = credential?.accessToken || (await webResult.user.getIdToken());
-            if (token) {
-              cachedAccessToken = token;
-              localStorage.setItem('google_drive_access_token', cachedAccessToken);
-              return { user: webResult.user, accessToken: cachedAccessToken };
-            }
-          } catch (webErr: any) {
-            console.warn('Web fallback after native failure:', webErr);
-            if (
-              webErr?.code === 'auth/popup-closed-by-user' ||
-              webErr?.code === 'auth/cancelled-popup-request'
-            ) {
-              return null;
-            }
-          }
-
-          // Construct descriptive error message with exact error info
+          // Native sign-in failed (e.g. DEVELOPER_ERROR (10) / SHA-1 fingerprint issue)
+          // Directly throw native error without web fallback as requested
           let detailMessage = 'গুগল একাউন্ট নির্বাচনে সমস্যা হয়েছে।';
           if (errStr.includes('10') || errStr.toLowerCase().includes('developer_error')) {
             detailMessage = 'গুগল সাইন-ইন এরর (Code 10): গুগল ক্লাউড কনসোলে এই APK-এর SHA-1 ফিঙ্গারপ্রিন্ট বা প্যাকেজ নেম ভেরিফিকেশন মেলেনি।';
@@ -197,13 +177,15 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
             detailMessage = 'গুগল সাইন-ইন এরর (12500): ডিভাইসের গুগল প্লে সার্ভিসেস বা ড্রাইভ পারমিশন কনফিগারেশন চেক করুন।';
           } else if (errStr.includes('7') || errStr.toLowerCase().includes('network')) {
             detailMessage = 'নেটওয়ার্ক এরর: ডিভাইসের ইন্টারনেট কানেকশন চেক করুন।';
+          } else if (errStr) {
+            detailMessage = `গুগল সাইন-ইন সমস্যা: ${errStr}`;
           }
 
           throw new Error(detailMessage);
         }
       }
 
-      // 2. For Web / Browser environment or native fallback
+      // 2. For Web / Browser environment
       try {
         const result = await signInWithPopup(auth, provider);
         const credential = GoogleAuthProvider.credentialFromResult(result);
