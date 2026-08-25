@@ -34,7 +34,7 @@ jobs:
           gradle-version: '8.13'
 
       - name: Install NPM Dependencies
-        run: npm ci || npm install
+        run: npm ci --legacy-peer-deps || npm install --legacy-peer-deps
 
       - name: Build Web Project
         run: npm run build
