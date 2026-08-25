@@ -25,6 +25,7 @@ export const ensureGoogleAuthInitialized = async () => {
     if (Capacitor.isNativePlatform() && GoogleAuth) {
       await GoogleAuth.initialize({
         clientId: '13178099429-u613g9lmhp7vjf7saut3ov1brhftdbm9.apps.googleusercontent.com',
+        serverClientId: '13178099429-u613g9lmhp7vjf7saut3ov1brhftdbm9.apps.googleusercontent.com',
         scopes: ['profile', 'email', 'https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/drive.appdata'],
         grantOfflineAccess: true
       });
@@ -220,17 +221,40 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
             return null;
           }
 
-          // Native sign-in failed (e.g. DEVELOPER_ERROR (10) / SHA-1 fingerprint issue)
-          // Directly throw native error without web fallback as requested
-          let detailMessage = 'গুগল একাউন্ট নির্বাচনে সমস্যা হয়েছে।';
+          // Native sign-in failed (e.g. DEVELOPER_ERROR (10) / SHA-1 fingerprint issue / Something went wrong)
+          // Attempt Web auth fallback if available, or format helpful error
+          try {
+            console.log('Native sign-in failed, attempting Firebase web sign-in fallback...');
+            const result = await signInWithPopup(auth, provider);
+            const credential = GoogleAuthProvider.credentialFromResult(result);
+            const token = credential?.accessToken || (await result.user.getIdToken());
+            if (token) {
+              cachedAccessToken = token;
+              localStorage.setItem('google_drive_access_token', cachedAccessToken);
+              return { user: result.user, accessToken: cachedAccessToken };
+            }
+          } catch (webFallbackErr: any) {
+            if (webFallbackErr?.code === 'auth/popup-blocked' || webFallbackErr?.code === 'auth/cancelled-popup-request') {
+              console.log('Popup blocked in web fallback, attempting redirect...');
+              await signInWithRedirect(auth, provider);
+              return null;
+            }
+            if (webFallbackErr?.code === 'auth/popup-closed-by-user') {
+              return null;
+            }
+          }
+
+          let detailMessage = 'গুগল অ্যাকাউন্ট সাইন-ইনে সমস্যা হয়েছে।';
           if (errStr.includes('10') || errStr.toLowerCase().includes('developer_error')) {
             detailMessage = 'গুগল সাইন-ইন এরর (Code 10): গুগল ক্লাউড কনসোলে এই APK-এর SHA-1 ফিঙ্গারপ্রিন্ট বা প্যাকেজ নেম ভেরিফিকেশন মেলেনি।';
           } else if (errStr.includes('12500') || errStr.toLowerCase().includes('sign_in_failed')) {
             detailMessage = 'গুগল সাইন-ইন এরর (12500): ডিভাইসের গুগল প্লে সার্ভিসেস বা ড্রাইভ পারমিশন কনফিগারেশন চেক করুন।';
           } else if (errStr.includes('7') || errStr.toLowerCase().includes('network')) {
             detailMessage = 'নেটওয়ার্ক এরর: ডিভাইসের ইন্টারনেট কানেকশন চেক করুন।';
-          } else if (errStr) {
+          } else if (errStr && errStr !== 'Something went wrong') {
             detailMessage = `গুগল সাইন-ইন সমস্যা: ${errStr}`;
+          } else {
+            detailMessage = 'গুগল সাইন-ইন সমস্যা: প্লে সার্ভিসেস সংযোগে সমস্যা। ইন্টারনেট কানেকশন বা প্লে সার্ভিসেস আপডেট চেক করুন।';
           }
 
           throw new Error(detailMessage);
