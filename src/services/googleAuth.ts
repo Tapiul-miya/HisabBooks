@@ -46,6 +46,51 @@ let isSigningIn = false;
 let activeSignInPromise: Promise<{ user: User; accessToken: string } | null> | null = null;
 let cachedAccessToken: string | null = null;
 
+export const autoSignIn = async (): Promise<{ user: User; accessToken: string } | null> => {
+  try {
+    if (auth.currentUser) {
+      const token = cachedAccessToken || localStorage.getItem('google_drive_access_token') || (await auth.currentUser.getIdToken());
+      return { user: auth.currentUser, accessToken: token };
+    }
+
+    if (Capacitor.isNativePlatform()) {
+      await ensureGoogleAuthInitialized();
+      try {
+        const googleUser = await GoogleAuth.refresh().catch(() => null);
+        if (googleUser && googleUser.authentication) {
+          const idToken = googleUser.authentication.idToken;
+          const accessToken = googleUser.authentication.accessToken || idToken;
+
+          let firebaseUser = auth.currentUser;
+          if (idToken) {
+            try {
+              const credential = GoogleAuthProvider.credential(idToken, accessToken);
+              const userCred = await signInWithCredential(auth, credential);
+              firebaseUser = userCred.user;
+            } catch (e) {
+              console.warn('Firebase silent cred signin info:', e);
+            }
+          }
+
+          if (accessToken) {
+            cachedAccessToken = accessToken;
+            localStorage.setItem('google_drive_access_token', cachedAccessToken);
+          }
+
+          if (firebaseUser) {
+            return { user: firebaseUser, accessToken: cachedAccessToken || accessToken || '' };
+          }
+        }
+      } catch (e) {
+        console.warn('Auto signin refresh failed:', e);
+      }
+    }
+  } catch (err) {
+    console.warn('Auto signin error:', err);
+  }
+  return null;
+};
+
 export const initAuth = (
   onAuthSuccess?: (user: User, token: string) => void,
   onAuthFailure?: () => void
@@ -70,6 +115,13 @@ export const initAuth = (
   const storedToken = localStorage.getItem('google_drive_access_token');
   if (storedToken) {
     cachedAccessToken = storedToken;
+  }
+
+  // Attempt silent auto sign-in if native platform
+  if (Capacitor.isNativePlatform()) {
+    ensureGoogleAuthInitialized().then(() => {
+      autoSignIn().catch(() => {});
+    }).catch(() => {});
   }
 
   return onAuthStateChanged(auth, async (user: User | null) => {

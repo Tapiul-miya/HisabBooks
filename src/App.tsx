@@ -9,6 +9,7 @@ import { AboutAppModal } from './components/AboutAppModal';
 import { BackupRestoreModal } from './components/BackupRestoreModal';
 import { SplashScreen } from './components/SplashScreen';
 import { triggerAutoCloudBackup } from './services/googleDriveStorage';
+import { initAuth } from './services/googleAuth';
 
 type ActiveScreen = 'list' | 'add' | 'area';
 
@@ -74,6 +75,12 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     refreshData();
+    const unsubscribe = initAuth();
+    return () => {
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
+      }
+    };
   }, [refreshData]);
 
   const handleToggleGroup = (key: string) => {
