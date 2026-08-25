@@ -492,16 +492,7 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
     return paid - cashout;
   }, [paid, cashout]);
 
-  const [showExtraFields, setShowExtraFields] = useState(() => {
-    return Boolean(
-      itemToEdit?.spendStm ||
-      (itemToEdit?.spend && itemToEdit.spend !== 0) ||
-      (itemToEdit?.profit && itemToEdit.profit !== 0) ||
-      itemToEdit?.cashoutStm ||
-      (itemToEdit?.cashout && itemToEdit.cashout !== 0) ||
-      (itemToEdit?.credit && itemToEdit.credit !== 0)
-    );
-  });
+  const [showExtraFields, setShowExtraFields] = useState(false);
 
   // Dynamic labels
   const stmLabel = useMemo(() => {

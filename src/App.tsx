@@ -3,13 +3,14 @@ import { GroupByMode, VehicleHisab, GroupedHisab, getGroupKey, DatabaseTotals, C
 import { HisabStorage } from './data/storage';
 import { HisabListScreen } from './screens/HisabListScreen';
 import { AddHisabScreen } from './screens/AddHisabScreen';
+import { AreaMeasurementScreen } from './screens/AreaMeasurementScreen';
 import { PdfReportModal } from './components/PdfReportModal';
 import { AboutAppModal } from './components/AboutAppModal';
 import { BackupRestoreModal } from './components/BackupRestoreModal';
 import { SplashScreen } from './components/SplashScreen';
 import { triggerAutoCloudBackup } from './services/googleDriveStorage';
 
-type ActiveScreen = 'list' | 'add';
+type ActiveScreen = 'list' | 'add' | 'area';
 
 export const App: React.FC = () => {
   const [showSplash, setShowSplash] = useState(true);
@@ -147,14 +148,22 @@ export const App: React.FC = () => {
     } else {
       savedId = await HisabStorage.insert(entry as Omit<VehicleHisab, 'id'>);
     }
-    const list = await HisabStorage.getAllWithSearchGroupSum(
-      searchQuery,
-      null,
-      selectedGroupByMode,
-      selectedWorkDetails,
-      customerFilter
-    );
+    
+    // Refresh distinct work details options and query results including totals in real-time
+    const [options, { groups: list, totals }] = await Promise.all([
+      HisabStorage.getDistinctWorkDetails(),
+      HisabStorage.getQueryResult(
+        searchQuery,
+        null,
+        selectedGroupByMode,
+        selectedWorkDetails,
+        customerFilter
+      )
+    ]);
+    
+    setWorkDetailsOptions(options);
     setGroupedList(list);
+    setDbTotals(totals);
 
     const targetGroup = list.find(g =>
       (savedId && g.items.some(i => i.id === savedId)) ||
@@ -184,7 +193,7 @@ export const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#E1E8EF] relative">
-      <div className={currentScreen === 'add' ? 'hidden' : 'block'}>
+      <div className={currentScreen === 'list' ? 'block' : 'hidden'}>
         <HisabListScreen
           groupedList={groupedList}
           totals={dbTotals}
@@ -209,6 +218,7 @@ export const App: React.FC = () => {
           onExportPdf={() => setShowPdfModal(true)}
           onShowBackup={() => setShowBackupModal(true)}
           onShowAbout={() => setShowAboutModal(true)}
+          onShowAreaMeasurement={() => setCurrentScreen('area')}
           onReloadData={refreshData}
         />
       </div>
@@ -226,6 +236,26 @@ export const App: React.FC = () => {
             groupByMode={selectedGroupByMode}
             onSave={handleSaveHisab}
             onBack={() => setCurrentScreen('list')}
+          />
+        </div>
+      )}
+
+      {currentScreen === 'area' && (
+        <div className="fixed inset-0 z-50 bg-[#E1E8EF] overflow-y-auto">
+          <AreaMeasurementScreen
+            onBack={() => setCurrentScreen('list')}
+            onAddToHisab={(data) => {
+              setEditItem(null);
+              setCopyParams({
+                name: data.name || '',
+                date: new Date().toISOString().split('T')[0],
+                hisabType: 'bigha',
+                address: data.address || '',
+                mobile: '',
+                workDetails: data.workDetails || ''
+              });
+              setCurrentScreen('add');
+            }}
           />
         </div>
       )}

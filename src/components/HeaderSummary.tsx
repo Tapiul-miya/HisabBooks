@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { MoreVertical, FileText, Info, HardDrive, Search, ChevronDown, Check, Calculator } from 'lucide-react';
+import { MoreVertical, FileText, Info, HardDrive, Search, ChevronDown, Check, Calculator, Ruler } from 'lucide-react';
 import { Utils } from '../util/utils';
 
 import appLogo from '../assets/images/app_logo.svg';
@@ -18,6 +18,7 @@ interface HeaderSummaryProps {
   onExportPdf: () => void;
   onShowBackup: () => void;
   onShowAbout: () => void;
+  onShowAreaMeasurement?: () => void;
   onToggleSearch: () => void;
 }
 
@@ -33,6 +34,7 @@ export const HeaderSummary: React.FC<HeaderSummaryProps> = ({
   onExportPdf,
   onShowBackup,
   onShowAbout,
+  onShowAreaMeasurement,
   onToggleSearch
 }) => {
   const [showMenu, setShowMenu] = useState(false);
@@ -154,6 +156,17 @@ export const HeaderSummary: React.FC<HeaderSummaryProps> = ({
                   >
                     <Search size={16} className="text-slate-500" />
                     <span>খুঁজুন / সার্চ</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowMenu(false);
+                      onShowAreaMeasurement?.();
+                    }}
+                    className="w-full px-4 py-2.5 text-left flex items-center space-x-3 hover:bg-emerald-50 text-emerald-900 font-medium transition-colors"
+                  >
+                    <Ruler size={16} className="text-[#1B5E20]" />
+                    <span>জমি বা মাঠের পরিমাপ (Area Measurement)</span>
                   </button>
 
                   <button

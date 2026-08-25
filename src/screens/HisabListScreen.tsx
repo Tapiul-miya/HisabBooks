@@ -35,6 +35,7 @@ interface HisabListScreenProps {
   onExportPdf: () => void;
   onShowBackup: () => void;
   onShowAbout: () => void;
+  onShowAreaMeasurement?: () => void;
   onReloadData?: () => void;
 }
 
@@ -62,6 +63,7 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
   onExportPdf,
   onShowBackup,
   onShowAbout,
+  onShowAreaMeasurement,
   onReloadData
 }) => {
   const [showSearch, setShowSearch] = useState(false);
@@ -145,6 +147,7 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
           onExportPdf={onExportPdf}
           onShowBackup={onShowBackup}
           onShowAbout={onShowAbout}
+          onShowAreaMeasurement={onShowAreaMeasurement}
           onToggleSearch={handleToggleSearch}
         />
 
