@@ -114,113 +114,180 @@ const INITIAL_SAMPLE_DATA: Omit<VehicleHisab, 'id'>[] = [
 ];
 
 let cachedDbBinary: Uint8Array | null = null;
+let idbInstance: IDBDatabase | null = null;
+let idbOpenPromise: Promise<IDBDatabase | null> | null = null;
 
-// Persistent SQLite IndexedDB Storage Driver
+// Safe IDB Connection Manager
+async function getIDBConnection(): Promise<IDBDatabase | null> {
+  if (typeof window === 'undefined' || typeof indexedDB === 'undefined') {
+    return null;
+  }
+
+  if (idbInstance) {
+    try {
+      // Test if transaction is executable
+      idbInstance.transaction(DB_STORE_NAME, 'readonly');
+      return idbInstance;
+    } catch {
+      idbInstance = null;
+    }
+  }
+
+  if (idbOpenPromise) return idbOpenPromise;
+
+  idbOpenPromise = new Promise<IDBDatabase | null>((resolve) => {
+    try {
+      const request = indexedDB.open('HisabBookSqliteStorage', 1);
+
+      request.onupgradeneeded = () => {
+        try {
+          if (!request.result.objectStoreNames.contains(DB_STORE_NAME)) {
+            request.result.createObjectStore(DB_STORE_NAME);
+          }
+        } catch {
+          // ignore
+        }
+      };
+
+      request.onsuccess = () => {
+        const db = request.result;
+        idbInstance = db;
+        db.onclose = () => {
+          idbInstance = null;
+        };
+        db.onversionchange = () => {
+          try { db.close(); } catch {}
+          idbInstance = null;
+        };
+        idbOpenPromise = null;
+        resolve(db);
+      };
+
+      request.onerror = () => {
+        idbOpenPromise = null;
+        resolve(null);
+      };
+
+      request.onblocked = () => {
+        idbOpenPromise = null;
+        resolve(null);
+      };
+    } catch {
+      idbOpenPromise = null;
+      resolve(null);
+    }
+  });
+
+  return idbOpenPromise;
+}
+
+// Persistent SQLite IndexedDB Storage Driver with LocalStorage Fallback
 async function getStoredDbBinary(): Promise<Uint8Array | null> {
   if (cachedDbBinary && cachedDbBinary.length > 0) {
     return cachedDbBinary;
   }
 
-  return new Promise((resolve) => {
-    try {
-      if (typeof indexedDB === 'undefined') {
-        resolve(cachedDbBinary);
-        return;
-      }
-      const request = indexedDB.open('HisabBookSqliteStorage', 1);
-      request.onupgradeneeded = () => {
-        try {
-          request.result.createObjectStore(DB_STORE_NAME);
-        } catch {
-          // ignore
-        }
-      };
-      request.onsuccess = () => {
-        const db = request.result;
-        db.onversionchange = () => {
-          try { db.close(); } catch {}
-        };
+  // 1. Try IndexedDB
+  try {
+    const db = await getIDBConnection();
+    if (db) {
+      const idbData = await new Promise<Uint8Array | null>((resolve) => {
         try {
           const tx = db.transaction(DB_STORE_NAME, 'readonly');
           const store = tx.objectStore(DB_STORE_NAME);
           const getReq = store.get(DB_FILE_KEY);
           getReq.onsuccess = () => {
-            const result = getReq.result || null;
-            if (result) {
-              cachedDbBinary = result;
-            }
-            try { db.close(); } catch {}
-            resolve(result || cachedDbBinary);
+            resolve(getReq.result || null);
           };
-          getReq.onerror = () => {
-            try { db.close(); } catch {}
-            resolve(cachedDbBinary);
-          };
-          tx.onabort = () => {
-            try { db.close(); } catch {}
-            resolve(cachedDbBinary);
-          };
+          getReq.onerror = () => resolve(null);
+          tx.onabort = () => resolve(null);
         } catch {
-          try { db.close(); } catch {}
-          resolve(cachedDbBinary);
+          resolve(null);
         }
-      };
-      request.onerror = () => resolve(cachedDbBinary);
-      request.onblocked = () => resolve(cachedDbBinary);
-    } catch {
-      resolve(cachedDbBinary);
+      });
+
+      if (idbData && idbData.length > 0) {
+        cachedDbBinary = idbData;
+        return idbData;
+      }
     }
-  });
+  } catch (e) {
+    console.warn('IDB read warning, checking fallback:', e);
+  }
+
+  // 2. Try LocalStorage Fallback
+  try {
+    const fallbackB64 = localStorage.getItem('hisab_sqlite_db_backup');
+    if (fallbackB64) {
+      const binStr = atob(fallbackB64);
+      const len = binStr.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binStr.charCodeAt(i);
+      }
+      cachedDbBinary = bytes;
+      return bytes;
+    }
+  } catch (e) {
+    console.warn('LocalStorage fallback read error:', e);
+  }
+
+  return cachedDbBinary;
 }
+
+let saveQueue: Promise<void> = Promise.resolve();
 
 async function saveDbBinary(data: Uint8Array): Promise<void> {
   cachedDbBinary = data;
-  return new Promise((resolve) => {
+
+  // Queue writes sequentially to prevent transaction conflicts and closing states
+  saveQueue = saveQueue.then(async () => {
     try {
-      if (typeof indexedDB === 'undefined') {
-        resolve();
-        return;
+      const db = await getIDBConnection();
+      if (db) {
+        await new Promise<void>((resolve) => {
+          try {
+            const tx = db.transaction(DB_STORE_NAME, 'readwrite');
+            const store = tx.objectStore(DB_STORE_NAME);
+            store.put(data, DB_FILE_KEY);
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => {
+              idbInstance = null;
+              resolve();
+            };
+            tx.onabort = () => {
+              idbInstance = null;
+              resolve();
+            };
+          } catch {
+            idbInstance = null;
+            resolve();
+          }
+        });
       }
-      const request = indexedDB.open('HisabBookSqliteStorage', 1);
-      request.onupgradeneeded = () => {
-        try {
-          request.result.createObjectStore(DB_STORE_NAME);
-        } catch {
-          // ignore
-        }
-      };
-      request.onsuccess = () => {
-        const db = request.result;
-        db.onversionchange = () => {
-          try { db.close(); } catch {}
-        };
-        try {
-          const tx = db.transaction(DB_STORE_NAME, 'readwrite');
-          const store = tx.objectStore(DB_STORE_NAME);
-          store.put(data, DB_FILE_KEY);
-          tx.oncomplete = () => {
-            try { db.close(); } catch {}
-            resolve();
-          };
-          tx.onerror = () => {
-            try { db.close(); } catch {}
-            resolve();
-          };
-          tx.onabort = () => {
-            try { db.close(); } catch {}
-            resolve();
-          };
-        } catch {
-          try { db.close(); } catch {}
-          resolve();
-        }
-      };
-      request.onerror = () => resolve();
-      request.onblocked = () => resolve();
-    } catch {
-      resolve();
+    } catch (err) {
+      idbInstance = null;
+      console.warn('IndexedDB write warning:', err);
     }
-  });
+
+    // Also persist a fallback copy to LocalStorage (if under 4MB)
+    try {
+      if (data.length < 4 * 1024 * 1024) {
+        let binary = '';
+        const len = data.byteLength;
+        const chunk = 8192;
+        for (let i = 0; i < len; i += chunk) {
+          binary += String.fromCharCode.apply(null, Array.from(data.subarray(i, Math.min(i + chunk, len))));
+        }
+        const b64 = btoa(binary);
+        localStorage.setItem('hisab_sqlite_db_backup', b64);
+      }
+    } catch {
+      // ignore quota limit
+    }
+  }).catch(() => {});
+
+  return saveQueue;
 }
 
 async function getSqliteDb(): Promise<Database> {
