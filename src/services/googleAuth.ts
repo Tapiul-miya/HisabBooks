@@ -22,9 +22,9 @@ let isGoogleAuthInitialized = false;
 export const ensureGoogleAuthInitialized = async () => {
   if (isGoogleAuthInitialized || typeof window === 'undefined') return;
   try {
-    if (Capacitor.isNativePlatform() && GoogleAuth && typeof GoogleAuth.initialize === 'function') {
+    if (Capacitor.isNativePlatform() && GoogleAuth) {
       await GoogleAuth.initialize({
-        clientId: firebaseConfig.oAuthClientId,
+        clientId: '13178099429-u613g9lmhp7vjf7saut3ov1brhftdbm9.apps.googleusercontent.com',
         scopes: ['profile', 'email', 'https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/drive.appdata'],
         grantOfflineAccess: true
       });
@@ -118,9 +118,13 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
             // Link with Firebase Auth using ID token
             let firebaseUser = auth.currentUser;
             if (idToken) {
-              const credential = GoogleAuthProvider.credential(idToken, accessToken);
-              const userCred = await signInWithCredential(auth, credential);
-              firebaseUser = userCred.user;
+              try {
+                const credential = GoogleAuthProvider.credential(idToken, accessToken);
+                const userCred = await signInWithCredential(auth, credential);
+                firebaseUser = userCred.user;
+              } catch (credErr) {
+                console.warn('Firebase credential sign in info:', credErr);
+              }
             }
 
             if (accessToken) {
@@ -128,16 +132,36 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
               localStorage.setItem('google_drive_access_token', cachedAccessToken);
             }
 
-            if (firebaseUser) {
-              return { user: firebaseUser, accessToken: cachedAccessToken || '' };
-            }
+            // Create pseudo user object if Firebase was skipped or offline
+            const finalUser: User = firebaseUser || ({
+              uid: googleUser.id || 'google_user',
+              displayName: googleUser.name || googleUser.displayName || 'Google User',
+              email: googleUser.email || '',
+              photoURL: googleUser.imageUrl || null,
+              emailVerified: true,
+              isAnonymous: false,
+              metadata: {} as any,
+              providerData: [],
+              refreshToken: '',
+              tenantId: null,
+              delete: async () => {},
+              getIdToken: async () => idToken || '',
+              getIdTokenResult: async () => ({} as any),
+              reload: async () => {},
+              toJSON: () => ({})
+            } as unknown as User);
+
+            return { user: finalUser, accessToken: cachedAccessToken || accessToken || '' };
           }
+          return null;
         } catch (nativeErr: any) {
-          console.warn('Native GoogleAuth error, attempting fallback:', nativeErr);
-          // If user cancelled, don't throw error
+          console.warn('Native GoogleAuth result:', nativeErr);
+          // If user cancelled
           if (nativeErr?.message?.includes('cancel') || nativeErr?.code === '13' || nativeErr === 'user cancelled') {
             return null;
           }
+          // Do not trigger web popup on native devices as it prompts for login credentials again
+          throw new Error('গুগল একাউন্ট নির্বাচনে সমস্যা হয়েছে। ডিভাইসে ইন্টারনেট বা গুগল প্লে সার্ভিসেস চেক করুন।');
         }
       }
 

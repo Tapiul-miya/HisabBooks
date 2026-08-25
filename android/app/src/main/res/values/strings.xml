@@ -4,4 +4,5 @@
     <string name="title_activity_main">Hisab Book</string>
     <string name="package_name">com.hisabbook.app</string>
     <string name="custom_url_scheme">com.hisabbook.app</string>
+    <string name="server_client_id">13178099429-u613g9lmhp7vjf7saut3ov1brhftdbm9.apps.googleusercontent.com</string>
 </resources>
