@@ -156,12 +156,50 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
           return null;
         } catch (nativeErr: any) {
           console.warn('Native GoogleAuth result:', nativeErr);
-          // If user cancelled
-          if (nativeErr?.message?.includes('cancel') || nativeErr?.code === '13' || nativeErr === 'user cancelled') {
+          // If user cancelled selection
+          const errStr = typeof nativeErr === 'string' ? nativeErr : (nativeErr?.message || JSON.stringify(nativeErr) || '');
+          if (
+            errStr.toLowerCase().includes('cancel') ||
+            nativeErr?.code === '13' ||
+            nativeErr?.code === 13 ||
+            errStr.includes('user cancelled') ||
+            errStr.includes('closed')
+          ) {
             return null;
           }
-          // Do not trigger web popup on native devices as it prompts for login credentials again
-          throw new Error('গুগল একাউন্ট নির্বাচনে সমস্যা হয়েছে। ডিভাইসে ইন্টারনেট বা গুগল প্লে সার্ভিসেস চেক করুন।');
+
+          // If native sign in failed due to DEVELOPER_ERROR (10) / SHA-1 / Config issue, attempt Web/Browser fallback
+          console.log('Native GoogleAuth failed, trying browser popup/redirect fallback...');
+          try {
+            const webResult = await signInWithPopup(auth, provider);
+            const credential = GoogleAuthProvider.credentialFromResult(webResult);
+            const token = credential?.accessToken || (await webResult.user.getIdToken());
+            if (token) {
+              cachedAccessToken = token;
+              localStorage.setItem('google_drive_access_token', cachedAccessToken);
+              return { user: webResult.user, accessToken: cachedAccessToken };
+            }
+          } catch (webErr: any) {
+            console.warn('Web fallback after native failure:', webErr);
+            if (
+              webErr?.code === 'auth/popup-closed-by-user' ||
+              webErr?.code === 'auth/cancelled-popup-request'
+            ) {
+              return null;
+            }
+          }
+
+          // Construct descriptive error message with exact error info
+          let detailMessage = 'গুগল একাউন্ট নির্বাচনে সমস্যা হয়েছে।';
+          if (errStr.includes('10') || errStr.toLowerCase().includes('developer_error')) {
+            detailMessage = 'গুগল সাইন-ইন এরর (Code 10): গুগল ক্লাউড কনসোলে এই APK-এর SHA-1 ফিঙ্গারপ্রিন্ট বা প্যাকেজ নেম ভেরিফিকেশন মেলেনি।';
+          } else if (errStr.includes('12500') || errStr.toLowerCase().includes('sign_in_failed')) {
+            detailMessage = 'গুগল সাইন-ইন এরর (12500): ডিভাইসের গুগল প্লে সার্ভিসেস বা ড্রাইভ পারমিশন কনফিগারেশন চেক করুন।';
+          } else if (errStr.includes('7') || errStr.toLowerCase().includes('network')) {
+            detailMessage = 'নেটওয়ার্ক এরর: ডিভাইসের ইন্টারনেট কানেকশন চেক করুন।';
+          }
+
+          throw new Error(detailMessage);
         }
       }
 
