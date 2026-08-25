@@ -18,6 +18,9 @@ export const auth = getAuth(app);
 const provider = new GoogleAuthProvider();
 provider.addScope('https://www.googleapis.com/auth/drive.file');
 provider.addScope('https://www.googleapis.com/auth/drive.appdata');
+provider.setCustomParameters({
+  prompt: 'select_account'
+});
 
 let isSigningIn = false;
 let activeSignInPromise: Promise<{ user: User; accessToken: string } | null> | null = null;
@@ -27,7 +30,7 @@ export const initAuth = (
   onAuthSuccess?: (user: User, token: string) => void,
   onAuthFailure?: () => void
 ) => {
-  // Check redirect result on app load (critical for Capacitor)
+  // Check redirect result on app load (critical for Capacitor & redirect flows)
   getRedirectResult(auth)
     .then((result) => {
       if (result) {
@@ -56,9 +59,15 @@ export const initAuth = (
         cachedAccessToken = token;
         if (onAuthSuccess) onAuthSuccess(user, token);
       } else if (!isSigningIn) {
-        cachedAccessToken = null;
-        localStorage.removeItem('google_drive_access_token');
-        if (onAuthFailure) onAuthFailure();
+        try {
+          const idToken = await user.getIdToken();
+          if (idToken) {
+            // User is signed in with Firebase
+            if (onAuthSuccess) onAuthSuccess(user, idToken);
+          }
+        } catch {
+          if (onAuthFailure) onAuthFailure();
+        }
       }
     } else {
       cachedAccessToken = null;
@@ -77,22 +86,45 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
     try {
       isSigningIn = true;
 
-      // For native devices, use signInWithRedirect (navigates inside the app due to allowNavigation)
+      // For native devices, try signInWithPopup first or fallback to redirect smoothly
       if (Capacitor.isNativePlatform()) {
-        await signInWithRedirect(auth, provider);
-        return null;
+        try {
+          const result = await signInWithPopup(auth, provider);
+          const credential = GoogleAuthProvider.credentialFromResult(result);
+          const token = credential?.accessToken || (await result.user.getIdToken());
+          if (token) {
+            cachedAccessToken = token;
+            localStorage.setItem('google_drive_access_token', cachedAccessToken);
+            return { user: result.user, accessToken: cachedAccessToken };
+          }
+        } catch (popupErr: any) {
+          console.log('Native popup fallback to redirect:', popupErr?.message);
+          await signInWithRedirect(auth, provider);
+          return null;
+        }
       }
 
-      // For web/live preview, use popup
-      const result = await signInWithPopup(auth, provider);
-      const credential = GoogleAuthProvider.credentialFromResult(result);
-      if (!credential?.accessToken) {
-        throw new Error('গুগল ড্রাইভ অ্যাক্সেস টোকেন পাওয়া যায়নি। অনুগ্রহ করে আবার চেষ্টা করুন।');
-      }
+      // For web/preview environments, try popup first
+      try {
+        const result = await signInWithPopup(auth, provider);
+        const credential = GoogleAuthProvider.credentialFromResult(result);
+        const token = credential?.accessToken || (await result.user.getIdToken());
+        if (!token) {
+          throw new Error('গুগল ড্রাইভ অ্যাক্সেস টোকেন পাওয়া যায়নি। অনুগ্রহ করে আবার চেষ্টা করুন।');
+        }
 
-      cachedAccessToken = credential.accessToken;
-      localStorage.setItem('google_drive_access_token', cachedAccessToken);
-      return { user: result.user, accessToken: cachedAccessToken };
+        cachedAccessToken = token;
+        localStorage.setItem('google_drive_access_token', cachedAccessToken);
+        return { user: result.user, accessToken: cachedAccessToken };
+      } catch (popupErr: any) {
+        // If popup was blocked or failed in iframe/browser, fallback seamlessly to redirect
+        if (popupErr?.code === 'auth/popup-blocked' || popupErr?.code === 'auth/cancelled-popup-request') {
+          console.log('Popup blocked or cancelled, attempting redirect sign-in...');
+          await signInWithRedirect(auth, provider);
+          return null;
+        }
+        throw popupErr;
+      }
     } catch (error: unknown) {
       const authErr = error as { code?: string; message?: string };
       console.warn('Google Sign in status:', authErr?.code || authErr?.message);
@@ -102,9 +134,6 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
         authErr?.code === 'auth/cancelled-popup-request'
       ) {
         return null;
-      }
-      if (authErr?.code === 'auth/popup-blocked') {
-        throw new Error('পপআপ ব্লক করা আছে। অনুগ্রহ করে ব্রাউজার সেটিংসে পপআপ অনুমোদন করুন।');
       }
 
       throw error;
