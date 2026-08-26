@@ -42,6 +42,7 @@ import {
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
 import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { Utils } from '../util/utils';
 
 export type ShapeMode = 'gps_polygon' | 'quadrilateral' | 'triangle' | 'rectangle' | 'circle' | 'multi_plot' | 'converter';
@@ -335,6 +336,7 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
   const watchIdRef = useRef<number | null>(null);
   const lastMapCenterRef = useRef<{ lat: number; lng: number } | null>(null);
   const lastMapZoomRef = useRef<number | null>(null);
+  const hasAutoCenteredRef = useRef<boolean>(false);
 
   // Method 1: Quadrilateral (৪ বাহু ও ঐচ্ছিক কর্ণ)
   const [quadNorth, setQuadNorth] = useState('');
@@ -385,31 +387,31 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
     }
   }, [savedRecords]);
 
+  // Keep isGpsTrackingRef up to date without restarting location watcher
+  const isGpsTrackingRef = useRef(isGpsTracking);
+  useEffect(() => {
+    isGpsTrackingRef.current = isGpsTracking;
+  }, [isGpsTracking]);
+
   // ================= GPS INITIALIZATION & TRACKING =================
   useEffect(() => {
+    if (activeTab !== 'gps_polygon') return;
+
     let watchId: string | number | null = null;
     let isCancelled = false;
 
     const startLocationTracking = async () => {
-      try {
-        const loc = await fetchBestLocation();
-        if (!isCancelled) {
-          setCurrentGpsPos({ lat: loc.lat, lng: loc.lng, accuracy: loc.accuracy });
-          setGpsError(null);
-        }
-      } catch (err: any) {
-        if (isCancelled) return;
-        if (err?.message === 'PERMISSION_DENIED') {
-          setGpsError('ব্রাউজার বা ডিভাইসে লোকেশন পারমিশন ব্লক করা আছে। সেটিংস থেকে Allow করুন।');
-        } else {
-          setGpsError('GPS অবস্থান খোঁজা সম্ভব হয়নি। ফোনের লোকেশন অন করুন বা ম্যাপে টাচ করে কোণা চিহ্নিত করুন।');
-        }
-      }
-
+      // 1. Immediately start location watching so Android OS keeps Status Bar Location Icon active
       try {
         if (Capacitor.isNativePlatform()) {
+          try {
+            await Geolocation.requestPermissions();
+          } catch (pe) {
+            console.warn('Native permission request note:', pe);
+          }
+
           const capWatchId = await Geolocation.watchPosition(
-            { enableHighAccuracy: true, maximumAge: 3000 },
+            { enableHighAccuracy: true, maximumAge: 2000 },
             (pos, err) => {
               if (isCancelled) return;
               if (err || !pos?.coords) return;
@@ -417,7 +419,7 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
               setCurrentGpsPos({ lat: latitude, lng: longitude, accuracy });
               setGpsError(null);
 
-              if (isGpsTracking) {
+              if (isGpsTrackingRef.current) {
                 setGpsPoints((prev) => {
                   if (prev.length === 0) {
                     return [{ id: Date.now().toString(), lat: latitude, lng: longitude, accuracy, timestamp: Date.now() }];
@@ -442,7 +444,7 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
               setCurrentGpsPos({ lat: latitude, lng: longitude, accuracy });
               setGpsError(null);
 
-              if (isGpsTracking) {
+              if (isGpsTrackingRef.current) {
                 setGpsPoints((prev) => {
                   if (prev.length === 0) {
                     return [{ id: Date.now().toString(), lat: latitude, lng: longitude, accuracy, timestamp: Date.now() }];
@@ -459,12 +461,28 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
             (err) => {
               console.warn('GPS watch error:', err.message);
             },
-            { enableHighAccuracy: false, maximumAge: 5000 }
+            { enableHighAccuracy: true, maximumAge: 3000 }
           );
           watchId = webWatchId;
         }
       } catch (e) {
-        console.warn('Watch location error:', e);
+        console.warn('Watch location start error:', e);
+      }
+
+      // 2. Parallel single-shot location fetch for quick initial center fallback
+      try {
+        const loc = await fetchBestLocation();
+        if (!isCancelled) {
+          setCurrentGpsPos(prev => prev || { lat: loc.lat, lng: loc.lng, accuracy: loc.accuracy });
+          setGpsError(null);
+        }
+      } catch (err: any) {
+        if (isCancelled) return;
+        if (err?.message === 'PERMISSION_DENIED') {
+          setGpsError('ব্রাউজার বা ডিভাইসে লোকেশন পারমিশন ব্লক করা আছে। সেটিংস থেকে Allow করুন।');
+        } else if (!currentGpsPos) {
+          setGpsError('GPS অবস্থান খোঁজা সম্ভব হয়নি। ফোনের লোকেশন অন করুন বা ম্যাপে টাচ করে কোণা চিহ্নিত করুন।');
+        }
       }
     };
 
@@ -480,7 +498,7 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
         }
       }
     };
-  }, [isGpsTracking]);
+  }, [activeTab]);
 
   // ================= LEAFLET MAP SETUP =================
   useEffect(() => {
@@ -592,7 +610,7 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
         minZoom: 1
       }).addTo(map);
     } else {
-      let tileUrl = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
+      let tileUrl = 'https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
       let maxZoom = 21;
       let subdomains: string[] = ['mt0', 'mt1', 'mt2', 'mt3'];
 
@@ -601,7 +619,7 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
         maxZoom = 19;
         subdomains = ['a', 'b', 'c'];
       } else if (mapLayerType === 'osm_street') {
-        tileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+        tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
         maxZoom = 19;
         subdomains = ['a', 'b', 'c'];
       }
@@ -664,7 +682,7 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
         minZoom: 1
       }).addTo(map);
     } else {
-      let tileUrl = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
+      let tileUrl = 'https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
       let maxZoom = 21;
       let subdomains: string[] = ['mt0', 'mt1', 'mt2', 'mt3'];
 
@@ -673,7 +691,7 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
         maxZoom = 19;
         subdomains = ['a', 'b', 'c'];
       } else if (mapLayerType === 'osm_street') {
-        tileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+        tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
         maxZoom = 19;
         subdomains = ['a', 'b', 'c'];
       }
@@ -724,6 +742,16 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
 
     // 1. Draw User Current Location Pulse
     if (currentGpsPos) {
+      // Auto-center map on first valid position received (especially useful for Android native launch)
+      if (!hasAutoCenteredRef.current) {
+        hasAutoCenteredRef.current = true;
+        try {
+          map.flyTo([currentGpsPos.lat, currentGpsPos.lng], 18, { animate: true });
+        } catch (e) {
+          // ignore
+        }
+      }
+
       // Accuracy Circle
       if (currentGpsPos.accuracy && currentGpsPos.accuracy > 0) {
         userAccuracyCircleRef.current = L.circle([currentGpsPos.lat, currentGpsPos.lng], {
