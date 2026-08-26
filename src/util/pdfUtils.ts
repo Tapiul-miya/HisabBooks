@@ -107,9 +107,7 @@ const copyComputedStyles = (source: HTMLElement, target: HTMLElement): void => {
     if (bg && bg !== 'transparent' && bg !== 'rgba(0, 0, 0, 0)') {
       tgt.style.backgroundColor = bg;
     } else if (src.tagName === 'TR' || src.tagName === 'TD') {
-      if (src.tagName !== 'TH') {
-        tgt.style.backgroundColor = rowIndex !== undefined && rowIndex % 2 === 1 ? '#f1f5f9' : '#ffffff';
-      }
+      tgt.style.backgroundColor = rowIndex !== undefined && rowIndex % 2 === 1 ? '#f1f5f9' : '#ffffff';
     }
 
     if (borderColor && borderColor !== 'transparent' && borderColor !== 'rgba(0, 0, 0, 0)') {

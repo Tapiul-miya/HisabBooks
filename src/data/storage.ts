@@ -297,7 +297,12 @@ async function getSqliteDb(): Promise<Database> {
   initPromise = (async () => {
     if (!SQL) {
       SQL = await initSqlJs({
-        locateFile: () => sqlWasmUrl
+        locateFile: (file) => {
+          if (file.endsWith('.wasm')) {
+            return sqlWasmUrl || '/sql-wasm.wasm';
+          }
+          return file;
+        }
       });
     }
 

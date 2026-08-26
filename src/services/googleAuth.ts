@@ -23,7 +23,7 @@ export const ensureGoogleAuthInitialized = async () => {
   if (isGoogleAuthInitialized || typeof window === 'undefined') return;
   try {
     if (Capacitor.isNativePlatform() && GoogleAuth) {
-      await GoogleAuth.initialize({
+      await (GoogleAuth as any).initialize({
         clientId: '13178099429-u613g9lmhp7vjf7saut3ov1brhftdbm9.apps.googleusercontent.com',
         serverClientId: '13178099429-u613g9lmhp7vjf7saut3ov1brhftdbm9.apps.googleusercontent.com',
         scopes: ['profile', 'email', 'https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/drive.appdata'],
@@ -57,12 +57,12 @@ export const autoSignIn = async (): Promise<{ user: User; accessToken: string } 
     if (Capacitor.isNativePlatform()) {
       await ensureGoogleAuthInitialized();
       try {
-        const googleUser = await GoogleAuth.refresh().catch(() => null);
+        const googleUser: any = await GoogleAuth.refresh().catch(() => null);
         if (googleUser && googleUser.authentication) {
           const idToken = googleUser.authentication.idToken;
           const accessToken = googleUser.authentication.accessToken || idToken;
 
-          let firebaseUser = auth.currentUser;
+          let firebaseUser: User | null = auth.currentUser;
           if (idToken) {
             try {
               const credential = GoogleAuthProvider.credential(idToken, accessToken);
@@ -75,7 +75,7 @@ export const autoSignIn = async (): Promise<{ user: User; accessToken: string } 
 
           if (accessToken) {
             cachedAccessToken = accessToken;
-            localStorage.setItem('google_drive_access_token', cachedAccessToken);
+            localStorage.setItem('google_drive_access_token', accessToken);
           }
 
           if (firebaseUser) {
@@ -163,13 +163,13 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
       if (Capacitor.isNativePlatform()) {
         try {
           await ensureGoogleAuthInitialized();
-          const googleUser = await GoogleAuth.signIn();
+          const googleUser: any = await GoogleAuth.signIn();
           if (googleUser && googleUser.authentication) {
             const idToken = googleUser.authentication.idToken;
             const accessToken = googleUser.authentication.accessToken || idToken;
 
             // Link with Firebase Auth using ID token
-            let firebaseUser = auth.currentUser;
+            let firebaseUser: User | null = auth.currentUser;
             if (idToken) {
               try {
                 const credential = GoogleAuthProvider.credential(idToken, accessToken);
@@ -182,7 +182,7 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
 
             if (accessToken) {
               cachedAccessToken = accessToken;
-              localStorage.setItem('google_drive_access_token', cachedAccessToken);
+              localStorage.setItem('google_drive_access_token', accessToken);
             }
 
             // Create pseudo user object if Firebase was skipped or offline
