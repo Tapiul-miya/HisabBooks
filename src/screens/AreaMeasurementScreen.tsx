@@ -39,6 +39,8 @@ import {
   WifiOff,
   Radio
 } from 'lucide-react';
+import { Geolocation } from '@capacitor/geolocation';
+import { Capacitor } from '@capacitor/core';
 import L from 'leaflet';
 import { Utils } from '../util/utils';
 
@@ -266,58 +268,135 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
 
   // ================= GPS INITIALIZATION & TRACKING =================
   useEffect(() => {
-    if (!navigator.geolocation) {
-      setGpsError('আপনার ডিভাইসে GPS / Geolocation সমর্থিত নয়।');
-      return;
-    }
+    let watchId: string | number | null = null;
+    let isCancelled = false;
 
-    // Get initial position
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const { latitude, longitude, accuracy } = pos.coords;
-        setCurrentGpsPos({ lat: latitude, lng: longitude, accuracy });
-        setGpsError(null);
-      },
-      (err) => {
-        console.warn('GPS location fetch failed:', err.message);
-        setGpsError('GPS লোকেশন চালু করুন বা পারমিশন দিন।');
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    );
+    const startLocationTracking = async () => {
+      try {
+        if (Capacitor.isNativePlatform()) {
+          // Request permission on Native Android/iOS
+          const permResult = await Geolocation.requestPermissions();
+          if (permResult.location !== 'granted' && permResult.coarseLocation !== 'granted') {
+            setGpsError('GPS লোকেশন চালু করুন বা পারমিশন দিন।');
+            return;
+          }
 
-    // Watch position
-    const id = navigator.geolocation.watchPosition(
-      (pos) => {
-        const { latitude, longitude, accuracy } = pos.coords;
-        setCurrentGpsPos({ lat: latitude, lng: longitude, accuracy });
-        setGpsError(null);
-
-        // Auto-tracking mode (log point if walked more than 2.5 meters from last point)
-        if (isGpsTracking) {
-          setGpsPoints((prev) => {
-            if (prev.length === 0) {
-              return [{ id: Date.now().toString(), lat: latitude, lng: longitude, accuracy, timestamp: Date.now() }];
+          // Get initial position via Capacitor native API
+          try {
+            const pos = await Geolocation.getCurrentPosition({
+              enableHighAccuracy: true,
+              timeout: 10000,
+              maximumAge: 0
+            });
+            if (!isCancelled && pos && pos.coords) {
+              setCurrentGpsPos({
+                lat: pos.coords.latitude,
+                lng: pos.coords.longitude,
+                accuracy: pos.coords.accuracy
+              });
+              setGpsError(null);
             }
-            const last = prev[prev.length - 1];
-            const dist = haversineDistanceMeters(last.lat, last.lng, latitude, longitude);
-            if (dist >= 2.5) {
-              return [...prev, { id: Date.now().toString(), lat: latitude, lng: longitude, accuracy, timestamp: Date.now() }];
+          } catch (posErr) {
+            console.warn('Native getCurrentPosition failed, fallback to watch:', posErr);
+          }
+
+          // Watch position via Capacitor native API
+          const capWatchId = await Geolocation.watchPosition(
+            { enableHighAccuracy: true, maximumAge: 2000 },
+            (pos, err) => {
+              if (isCancelled) return;
+              if (err) {
+                console.warn('Capacitor GPS watch error:', err);
+                return;
+              }
+              if (pos && pos.coords) {
+                const { latitude, longitude, accuracy } = pos.coords;
+                setCurrentGpsPos({ lat: latitude, lng: longitude, accuracy });
+                setGpsError(null);
+
+                if (isGpsTracking) {
+                  setGpsPoints((prev) => {
+                    if (prev.length === 0) {
+                      return [{ id: Date.now().toString(), lat: latitude, lng: longitude, accuracy, timestamp: Date.now() }];
+                    }
+                    const last = prev[prev.length - 1];
+                    const dist = haversineDistanceMeters(last.lat, last.lng, latitude, longitude);
+                    if (dist >= 2.5) {
+                      return [...prev, { id: Date.now().toString(), lat: latitude, lng: longitude, accuracy, timestamp: Date.now() }];
+                    }
+                    return prev;
+                  });
+                }
+              }
             }
-            return prev;
-          });
+          );
+          watchId = capWatchId;
+        } else {
+          // Web fallback
+          if (!navigator.geolocation) {
+            setGpsError('আপনার ডিভাইসে GPS / Geolocation সমর্থিত নয়।');
+            return;
+          }
+
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              if (isCancelled) return;
+              const { latitude, longitude, accuracy } = pos.coords;
+              setCurrentGpsPos({ lat: latitude, lng: longitude, accuracy });
+              setGpsError(null);
+            },
+            (err) => {
+              if (isCancelled) return;
+              console.warn('GPS location fetch failed:', err.message);
+              setGpsError('GPS লোকেশন চালু করুন বা পারমিশন দিন।');
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+          );
+
+          const webWatchId = navigator.geolocation.watchPosition(
+            (pos) => {
+              if (isCancelled) return;
+              const { latitude, longitude, accuracy } = pos.coords;
+              setCurrentGpsPos({ lat: latitude, lng: longitude, accuracy });
+              setGpsError(null);
+
+              if (isGpsTracking) {
+                setGpsPoints((prev) => {
+                  if (prev.length === 0) {
+                    return [{ id: Date.now().toString(), lat: latitude, lng: longitude, accuracy, timestamp: Date.now() }];
+                  }
+                  const last = prev[prev.length - 1];
+                  const dist = haversineDistanceMeters(last.lat, last.lng, latitude, longitude);
+                  if (dist >= 2.5) {
+                    return [...prev, { id: Date.now().toString(), lat: latitude, lng: longitude, accuracy, timestamp: Date.now() }];
+                  }
+                  return prev;
+                });
+              }
+            },
+            (err) => {
+              console.warn('GPS watch error:', err.message);
+            },
+            { enableHighAccuracy: true, maximumAge: 2000 }
+          );
+          watchId = webWatchId;
         }
-      },
-      (err) => {
-        console.warn('GPS watch error:', err.message);
-      },
-      { enableHighAccuracy: true, maximumAge: 2000 }
-    );
+      } catch (e: any) {
+        console.error('Error starting location tracking:', e);
+        setGpsError('GPS লোকেশন চালু করুন বা পারমিশন দিন।');
+      }
+    };
 
-    watchIdRef.current = id;
+    startLocationTracking();
 
     return () => {
-      if (watchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(watchIdRef.current);
+      isCancelled = true;
+      if (watchId !== null) {
+        if (typeof watchId === 'string') {
+          Geolocation.clearWatch({ id: watchId });
+        } else if (typeof watchId === 'number') {
+          navigator.geolocation.clearWatch(watchId);
+        }
       }
     };
   }, [isGpsTracking]);
@@ -671,24 +750,43 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
   }, [gpsPoints, currentGpsPos, activeTab]);
 
   // Center map on user location
-  const handleLocateMe = () => {
+  const handleLocateMe = async () => {
     if (!mapInstanceRef.current) return;
     if (currentGpsPos) {
       mapInstanceRef.current.flyTo([currentGpsPos.lat, currentGpsPos.lng], 19, { animate: true });
       showToast('আপনার বর্তমান GPS অবস্থান ম্যাপে প্রদর্শিত হচ্ছে', 'info');
-    } else if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const { latitude, longitude, accuracy } = pos.coords;
-          setCurrentGpsPos({ lat: latitude, lng: longitude, accuracy });
-          mapInstanceRef.current?.flyTo([latitude, longitude], 19, { animate: true });
-          showToast('GPS অবস্থান সফলভাবে চিহ্নিত হয়েছে', 'success');
-        },
-        (err) => {
-          showToast('GPS অবস্থান পাওয়া যায়নি। ফোনের লোকেশন চালু করুন।', 'warning');
-        },
-        { enableHighAccuracy: true }
-      );
+    } else {
+      try {
+        if (Capacitor.isNativePlatform()) {
+          const permResult = await Geolocation.requestPermissions();
+          if (permResult.location !== 'granted' && permResult.coarseLocation !== 'granted') {
+            showToast('GPS লোকেশন পারমিশন দিন।', 'warning');
+            return;
+          }
+          const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true });
+          if (pos && pos.coords) {
+            const { latitude, longitude, accuracy } = pos.coords;
+            setCurrentGpsPos({ lat: latitude, lng: longitude, accuracy });
+            mapInstanceRef.current?.flyTo([latitude, longitude], 19, { animate: true });
+            showToast('GPS অবস্থান সফলভাবে চিহ্নিত হয়েছে', 'success');
+          }
+        } else if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              const { latitude, longitude, accuracy } = pos.coords;
+              setCurrentGpsPos({ lat: latitude, lng: longitude, accuracy });
+              mapInstanceRef.current?.flyTo([latitude, longitude], 19, { animate: true });
+              showToast('GPS অবস্থান সফলভাবে চিহ্নিত হয়েছে', 'success');
+            },
+            (err) => {
+              showToast('GPS অবস্থান পাওয়া যায়নি। ফোনের লোকেশন চালু করুন।', 'warning');
+            },
+            { enableHighAccuracy: true }
+          );
+        }
+      } catch (err) {
+        showToast('GPS অবস্থান পাওয়া যায়নি। ফোনের লোকেশন চালু করুন।', 'warning');
+      }
     }
   };
 
