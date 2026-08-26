@@ -31,7 +31,7 @@ jobs:
           SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
           PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
-          SITE_NAME: ${{ secrets.FIREBASE_SITE }}
+          SITE_NAME: ${{ secrets.FIREBASE_SITE || 'hisabbooks' }}
         run: |
           if [ -n "$SERVICE_ACCOUNT_KEY" ]; then
             echo "Using Firebase Service Account for deployment..."
