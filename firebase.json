@@ -1,6 +1,5 @@
 {
   "hosting": {
-    "site": "hisabbook",
     "public": "public",
     "ignore": [
       "firebase.json",
