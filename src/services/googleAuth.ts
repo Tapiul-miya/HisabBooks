@@ -209,7 +209,7 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
           return null;
         } catch (nativeErr: any) {
           console.warn('Native GoogleAuth result:', nativeErr);
-          // If user cancelled selection
+          // If user cancelled selection or closed native dialog
           const errStr = typeof nativeErr === 'string' ? nativeErr : (nativeErr?.message || JSON.stringify(nativeErr) || '');
           if (
             errStr.toLowerCase().includes('cancel') ||
@@ -221,29 +221,7 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
             return null;
           }
 
-          // Native sign-in failed (e.g. DEVELOPER_ERROR (10) / SHA-1 fingerprint issue / Something went wrong)
-          // Attempt Web auth fallback if available, or format helpful error
-          try {
-            console.log('Native sign-in failed, attempting Firebase web sign-in fallback...');
-            const result = await signInWithPopup(auth, provider);
-            const credential = GoogleAuthProvider.credentialFromResult(result);
-            const token = credential?.accessToken || (await result.user.getIdToken());
-            if (token) {
-              cachedAccessToken = token;
-              localStorage.setItem('google_drive_access_token', cachedAccessToken);
-              return { user: result.user, accessToken: cachedAccessToken };
-            }
-          } catch (webFallbackErr: any) {
-            if (webFallbackErr?.code === 'auth/popup-blocked' || webFallbackErr?.code === 'auth/cancelled-popup-request') {
-              console.log('Popup blocked in web fallback, attempting redirect...');
-              await signInWithRedirect(auth, provider);
-              return null;
-            }
-            if (webFallbackErr?.code === 'auth/popup-closed-by-user') {
-              return null;
-            }
-          }
-
+          // Strictly use native GoogleAuth error handling — DO NOT trigger any web popup or redirect fallback
           let detailMessage = 'গুগল অ্যাকাউন্ট সাইন-ইনে সমস্যা হয়েছে।';
           if (errStr.includes('10') || errStr.toLowerCase().includes('developer_error')) {
             detailMessage = 'গুগল সাইন-ইন এরর (Code 10): গুগল ক্লাউড কনসোলে এই APK-এর SHA-1 ফিঙ্গারপ্রিন্ট বা প্যাকেজ নেম ভেরিফিকেশন মেলেনি।';
@@ -274,10 +252,10 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
         localStorage.setItem('google_drive_access_token', cachedAccessToken);
         return { user: result.user, accessToken: cachedAccessToken };
       } catch (popupErr: any) {
-        // If popup was blocked or failed in iframe/browser, fallback seamlessly to redirect
-        if (popupErr?.code === 'auth/popup-blocked' || popupErr?.code === 'auth/cancelled-popup-request') {
-          console.log('Popup blocked or cancelled, attempting redirect sign-in...');
-          await signInWithRedirect(auth, provider);
+        if (
+          popupErr?.code === 'auth/popup-closed-by-user' ||
+          popupErr?.code === 'auth/cancelled-popup-request'
+        ) {
           return null;
         }
         throw popupErr;

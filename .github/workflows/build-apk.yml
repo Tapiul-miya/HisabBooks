@@ -47,6 +47,7 @@ jobs:
       - name: Build Android APK with Gradle
         run: |
           cd android
+          gradle signingReport
           gradle assembleDebug --stacktrace
 
       - name: Upload APK Artifact
