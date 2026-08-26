@@ -26,44 +26,44 @@ jobs:
       - name: Build Project
         run: npm run build
 
-      - name: Deploy using Service Account
-        if: "${{ secrets.FIREBASE_SERVICE_ACCOUNT != '' }}"
+      - name: Deploy to Firebase Hosting
         env:
           SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-        run: |
-          echo "$SERVICE_ACCOUNT_KEY" > sa.json
-          PROJECT_ID=$(node -e "try { const sa = JSON.parse(require('fs').readFileSync('sa.json', 'utf8')); console.log(sa.project_id || ''); } catch(e) { console.log(''); }")
-          echo "Detected Project ID: $PROJECT_ID"
-          
-          SITE_NAME="${{ secrets.FIREBASE_SITE }}"
-          export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/sa.json
-          
-          if [ -n "$SITE_NAME" ]; then
-            echo "Deploying to specific site: $SITE_NAME"
-            if [ -n "$PROJECT_ID" ]; then
-              npx firebase-tools deploy --only hosting:$SITE_NAME --project "$PROJECT_ID" --non-interactive || npx firebase-tools deploy --only hosting --project "$PROJECT_ID" --non-interactive
-            else
-              npx firebase-tools deploy --only hosting:$SITE_NAME --non-interactive || npx firebase-tools deploy --only hosting --non-interactive
-            fi
-          else
-            if [ -n "$PROJECT_ID" ]; then
-              npx firebase-tools deploy --only hosting --project "$PROJECT_ID" --non-interactive
-            else
-              npx firebase-tools deploy --only hosting --non-interactive
-            fi
-          fi
-          
-          rm -f sa.json
-
-      - name: Deploy via Firebase Token CLI
-        if: "${{ secrets.FIREBASE_TOKEN != '' && secrets.FIREBASE_SERVICE_ACCOUNT == '' }}"
-        env:
           FIREBASE_TOKEN: ${{ secrets.FIREBASE_TOKEN }}
           PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          SITE_NAME: ${{ secrets.FIREBASE_SITE }}
         run: |
-          ARGS="--only hosting --non-interactive --token $FIREBASE_TOKEN"
-          if [ -n "$PROJECT_ID" ]; then
-            ARGS="$ARGS --project $PROJECT_ID"
+          if [ -n "$SERVICE_ACCOUNT_KEY" ]; then
+            echo "Using Firebase Service Account for deployment..."
+            echo "$SERVICE_ACCOUNT_KEY" > sa.json
+            
+            DETECTED_PROJECT=$(node -e "try { const sa = JSON.parse(require('fs').readFileSync('sa.json', 'utf8')); console.log(sa.project_id || ''); } catch(e) { console.log(''); }")
+            TARGET_PROJECT="${PROJECT_ID:-$DETECTED_PROJECT}"
+            echo "Target Project ID: $TARGET_PROJECT"
+            
+            export GOOGLE_APPLICATION_CREDENTIALS=$(pwd)/sa.json
+            
+            if [ -n "$SITE_NAME" ]; then
+              echo "Deploying to site: $SITE_NAME"
+              npx firebase-tools deploy --only hosting:$SITE_NAME --project "$TARGET_PROJECT" --non-interactive || npx firebase-tools deploy --only hosting --project "$TARGET_PROJECT" --non-interactive
+            else
+              npx firebase-tools deploy --only hosting --project "$TARGET_PROJECT" --non-interactive
+            fi
+            
+            rm -f sa.json
+          elif [ -n "$FIREBASE_TOKEN" ]; then
+            echo "Using Firebase Token for deployment..."
+            ARGS="--only hosting --non-interactive --token $FIREBASE_TOKEN"
+            if [ -n "$PROJECT_ID" ]; then
+              ARGS="$ARGS --project $PROJECT_ID"
+            fi
+            if [ -n "$SITE_NAME" ]; then
+              npx firebase-tools deploy --only hosting:$SITE_NAME $ARGS || npx firebase-tools deploy $ARGS
+            else
+              npx firebase-tools deploy $ARGS
+            fi
+          else
+            echo "Error: Neither FIREBASE_SERVICE_ACCOUNT nor FIREBASE_TOKEN found in GitHub Secrets."
+            exit 1
           fi
-          npx firebase-tools deploy $ARGS
 
