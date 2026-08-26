@@ -47,7 +47,15 @@ jobs:
       - name: Build Android APK with Gradle
         run: |
           cd android
-          gradle signingReport
+          if [ ! -f app/debug.keystore ]; then
+            keytool -genkeypair -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
+              -keystore app/debug.keystore \
+              -storepass android -keypass android \
+              -dname "CN=Android Debug, O=Android, C=US"
+          fi
+          echo "=== SHA-1 FINGERPRINT FOR GOOGLE CONSOLE ==="
+          keytool -list -v -keystore app/debug.keystore -alias androiddebugkey -storepass android -keypass android | grep SHA1 || true
+          echo "============================================="
           gradle assembleDebug --stacktrace
 
       - name: Upload APK Artifact
