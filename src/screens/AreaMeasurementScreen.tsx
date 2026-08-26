@@ -309,14 +309,23 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
 
   // ================= GPS POLYGON STATE =================
   const [gpsPoints, setGpsPoints] = useState<GpsPoint[]>([]);
-  const [currentGpsPos, setCurrentGpsPos] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
+  const [currentGpsPos, setCurrentGpsPos] = useState<{ lat: number; lng: number; accuracy: number; source?: 'gps' | 'network' | 'ip' } | null>(null);
+  const [isGpsOff, setIsGpsOff] = useState<boolean>(false);
   const [isGpsTracking, setIsGpsTracking] = useState<boolean>(false);
+  const [trackingSensitivity, setTrackingSensitivity] = useState<number>(0.8); // meters: 0.5, 0.8, 1.5, 3.0
   const [isLocating, setIsLocating] = useState<boolean>(false);
   const [gpsError, setGpsError] = useState<string | null>(null);
-  const [mapLayerType, setMapLayerType] = useState<'google_hybrid' | 'esri_sat' | 'osm_street'>('google_hybrid');
+  const [mapLayerType, setMapLayerType] = useState<'google_hybrid' | 'google_roadmap' | 'google_terrain' | 'esri_sat' | 'osm_street' | 'offline_canvas'>('google_hybrid');
+  const [isAutoFollow, setIsAutoFollow] = useState<boolean>(true);
   const [isMapExpanded, setIsMapExpanded] = useState<boolean>(false);
   const [mapReloadKey, setMapReloadKey] = useState<number>(0);
   const [inAppToast, setInAppToast] = useState<{ message: string; type: 'info' | 'success' | 'warning' } | null>(null);
+  const [showHelpGuide, setShowHelpGuide] = useState<boolean>(false);
+
+  const trackingSensitivityRef = useRef(trackingSensitivity);
+  useEffect(() => {
+    trackingSensitivityRef.current = trackingSensitivity;
+  }, [trackingSensitivity]);
 
   const showToast = (message: string, type: 'info' | 'success' | 'warning' = 'info') => {
     setInAppToast({ message, type });
@@ -328,6 +337,7 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
+  const labelLayerRef = useRef<L.TileLayer | null>(null);
   const polygonLayerRef = useRef<L.Polygon | null>(null);
   const polylineLayerRef = useRef<L.Polyline | null>(null);
   const markersGroupRef = useRef<L.LayerGroup | null>(null);
@@ -400,6 +410,28 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
     let watchId: string | number | null = null;
     let isCancelled = false;
 
+    // Listen to browser permission state if supported
+    if (typeof navigator !== 'undefined' && navigator.permissions && navigator.permissions.query) {
+      navigator.permissions.query({ name: 'geolocation' }).then((result) => {
+        if (result.state === 'denied') {
+          setIsGpsOff(true);
+          setGpsError('ব্রাউজার/ডিভাইসে লোকেশন পারমিশন ব্লক করা আছে (Denied)।');
+        } else if (result.state === 'granted') {
+          setIsGpsOff(false);
+          setGpsError(null);
+        }
+        result.onchange = () => {
+          if (result.state === 'denied') {
+            setIsGpsOff(true);
+            setGpsError('ব্রাউজার/ডিভাইসে লোকেশন পারমিশন অফ করা আছে (Denied)।');
+          } else if (result.state === 'granted') {
+            setIsGpsOff(false);
+            setGpsError(null);
+          }
+        };
+      }).catch(() => {});
+    }
+
     const startLocationTracking = async () => {
       // 1. Immediately start location watching so Android OS keeps Status Bar Location Icon active
       try {
@@ -411,22 +443,36 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
           }
 
           const capWatchId = await Geolocation.watchPosition(
-            { enableHighAccuracy: true, maximumAge: 2000 },
+            { enableHighAccuracy: true, maximumAge: 0 },
             (pos, err) => {
               if (isCancelled) return;
-              if (err || !pos?.coords) return;
+              if (err || !pos?.coords) {
+                if (err?.code === 1) {
+                  setIsGpsOff(true);
+                  setGpsError('ডিভাইসে লোকেশন পারমিশন বন্ধ আছে (Denied)।');
+                } else if (!currentGpsPos) {
+                  setIsGpsOff(true);
+                  setGpsError(err?.message || 'ডিভাইসের জিপিএস অপশন বন্ধ রয়েছে (GPS Off)।');
+                }
+                return;
+              }
               const { latitude, longitude, accuracy } = pos.coords;
-              setCurrentGpsPos({ lat: latitude, lng: longitude, accuracy });
+              setCurrentGpsPos({ lat: latitude, lng: longitude, accuracy, source: 'gps' });
+              setIsGpsOff(false);
               setGpsError(null);
 
               if (isGpsTrackingRef.current) {
+                // Filter out low accuracy drift points (> 35 meters) while walking
+                if (accuracy && accuracy > 35) return;
+
                 setGpsPoints((prev) => {
+                  const minDistance = trackingSensitivityRef.current || 1.5;
                   if (prev.length === 0) {
                     return [{ id: Date.now().toString(), lat: latitude, lng: longitude, accuracy, timestamp: Date.now() }];
                   }
                   const last = prev[prev.length - 1];
                   const dist = haversineDistanceMeters(last.lat, last.lng, latitude, longitude);
-                  if (dist >= 2.5) {
+                  if (dist >= minDistance) {
                     return [...prev, { id: Date.now().toString(), lat: latitude, lng: longitude, accuracy, timestamp: Date.now() }];
                   }
                   return prev;
@@ -441,17 +487,22 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
               if (isCancelled) return;
               if (!pos?.coords) return;
               const { latitude, longitude, accuracy } = pos.coords;
-              setCurrentGpsPos({ lat: latitude, lng: longitude, accuracy });
+              setCurrentGpsPos({ lat: latitude, lng: longitude, accuracy, source: 'gps' });
+              setIsGpsOff(false);
               setGpsError(null);
 
               if (isGpsTrackingRef.current) {
+                // Filter out low accuracy drift points (> 35 meters) while walking
+                if (accuracy && accuracy > 35) return;
+
                 setGpsPoints((prev) => {
+                  const minDistance = trackingSensitivityRef.current || 1.5;
                   if (prev.length === 0) {
                     return [{ id: Date.now().toString(), lat: latitude, lng: longitude, accuracy, timestamp: Date.now() }];
                   }
                   const last = prev[prev.length - 1];
                   const dist = haversineDistanceMeters(last.lat, last.lng, latitude, longitude);
-                  if (dist >= 2.5) {
+                  if (dist >= minDistance) {
                     return [...prev, { id: Date.now().toString(), lat: latitude, lng: longitude, accuracy, timestamp: Date.now() }];
                   }
                   return prev;
@@ -459,9 +510,19 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
               }
             },
             (err) => {
-              console.warn('GPS watch error:', err.message);
+              if (isCancelled) return;
+              console.warn('GPS watch status info:', err.message);
+              if (err.code === 1) { // PERMISSION_DENIED
+                setIsGpsOff(true);
+                setGpsError('ব্রাউজার বা ডিভাইসে লোকেশন পারমিশন বন্ধ আছে। সেটিংস থেকে Allow করুন।');
+              } else if (err.code === 2 && !currentGpsPos) { // POSITION_UNAVAILABLE only if no pos yet
+                setIsGpsOff(true);
+                setGpsError('ডিভাইসের GPS / লোকেশন অপশন বন্ধ রয়েছে (GPS Off)।');
+              } else if (err.code === 3) { // TIMEOUT
+                console.log('GPS high-accuracy fix search timeout, retrying...');
+              }
             },
-            { enableHighAccuracy: true, maximumAge: 3000 }
+            { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
           );
           watchId = webWatchId;
         }
@@ -473,15 +534,18 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
       try {
         const loc = await fetchBestLocation();
         if (!isCancelled) {
-          setCurrentGpsPos(prev => prev || { lat: loc.lat, lng: loc.lng, accuracy: loc.accuracy });
+          setCurrentGpsPos({ lat: loc.lat, lng: loc.lng, accuracy: loc.accuracy, source: loc.source });
+          setIsGpsOff(false);
           setGpsError(null);
         }
       } catch (err: any) {
         if (isCancelled) return;
         if (err?.message === 'PERMISSION_DENIED') {
-          setGpsError('ব্রাউজার বা ডিভাইসে লোকেশন পারমিশন ব্লক করা আছে। সেটিংস থেকে Allow করুন।');
+          setIsGpsOff(true);
+          setGpsError('ব্রাউজার বা ডিভাইসে লোকেশন পারমিশন ব্লক করা আছে (Permission Denied)।');
         } else if (!currentGpsPos) {
-          setGpsError('GPS অবস্থান খোঁজা সম্ভব হয়নি। ফোনের লোকেশন অন করুন বা ম্যাপে টাচ করে কোণা চিহ্নিত করুন।');
+          setIsGpsOff(true);
+          setGpsError('ডিভাইসের জিপিএস বন্ধ (GPS Off)। ফোনের লোকেশন চালু করুন।');
         }
       }
     };
@@ -583,52 +647,91 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
         accuracy: 0,
         timestamp: Date.now()
       };
-      setGpsPoints((prev) => [...prev, newPoint]);
+      setGpsPoints((prev) => {
+        const next = [...prev, newPoint];
+        showToast(`পয়েন্ট #${next.length} ম্যাপে চিহ্নিত করা হয়েছে`, 'success');
+        return next;
+      });
     });
 
     mapInstanceRef.current = map;
 
     // Apply Initial Tile Layer
-    if (mapLayerType === 'offline_canvas') {
-      // Create SVG Grid Pattern Data URL for pure offline grid background
-      const svgGrid = `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
-        <rect width="100" height="100" fill="#0f172a" />
-        <defs>
-          <pattern id="smallGrid" width="20" height="20" patternUnits="userSpaceOnUse">
-            <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#1e293b" stroke-width="0.8" />
-          </pattern>
-          <pattern id="grid" width="100" height="100" patternUnits="userSpaceOnUse">
-            <rect width="100" height="100" fill="url(#smallGrid)" />
-            <path d="M 100 0 L 0 0 0 100" fill="none" stroke="#334155" stroke-width="1.5" />
-          </pattern>
-        </defs>
-        <rect width="100" height="100" fill="url(#grid)" />
-      </svg>`;
-      const encodedSvg = `data:image/svg+xml;base64,${btoa(svgGrid)}`;
-      tileLayerRef.current = L.tileLayer(encodedSvg, {
-        maxZoom: 22,
-        minZoom: 1
-      }).addTo(map);
-    } else {
-      let tileUrl = 'https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
-      let maxZoom = 21;
-      let subdomains: string[] = ['mt0', 'mt1', 'mt2', 'mt3'];
-
-      if (mapLayerType === 'esri_sat') {
-        tileUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-        maxZoom = 19;
-        subdomains = ['a', 'b', 'c'];
-      } else if (mapLayerType === 'osm_street') {
-        tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-        maxZoom = 19;
-        subdomains = ['a', 'b', 'c'];
+    const applyMapTileLayers = (m: L.Map, layerType: string) => {
+      if (tileLayerRef.current) {
+        try { m.removeLayer(tileLayerRef.current); } catch (e) {}
+        tileLayerRef.current = null;
+      }
+      if (labelLayerRef.current) {
+        try { m.removeLayer(labelLayerRef.current); } catch (e) {}
+        labelLayerRef.current = null;
       }
 
-      tileLayerRef.current = L.tileLayer(tileUrl, {
-        maxZoom,
-        subdomains
-      }).addTo(map);
-    }
+      if (layerType === 'offline_canvas') {
+        const svgGrid = `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">
+          <rect width="100" height="100" fill="#0f172a" />
+          <defs>
+            <pattern id="smallGrid" width="20" height="20" patternUnits="userSpaceOnUse">
+              <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#1e293b" stroke-width="0.8" />
+            </pattern>
+            <pattern id="grid" width="100" height="100" patternUnits="userSpaceOnUse">
+              <rect width="100" height="100" fill="url(#smallGrid)" />
+              <path d="M 100 0 L 0 0 0 100" fill="none" stroke="#334155" stroke-width="1.5" />
+            </pattern>
+          </defs>
+          <rect width="100" height="100" fill="url(#grid)" />
+        </svg>`;
+        const encodedSvg = `data:image/svg+xml;base64,${btoa(svgGrid)}`;
+        tileLayerRef.current = L.tileLayer(encodedSvg, {
+          maxZoom: 22,
+          minZoom: 1
+        }).addTo(m);
+      } else if (layerType === 'google_roadmap') {
+        // High contrast Google Normal Vector Roadmap with clear roads and Bengali place names
+        tileLayerRef.current = L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+          maxZoom: 22,
+          maxNativeZoom: 20,
+          subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+        }).addTo(m);
+      } else if (layerType === 'google_terrain') {
+        // Google Terrain / Topo map showing land elevation and natural boundaries
+        tileLayerRef.current = L.tileLayer('https://{s}.google.com/vt/lyrs=p&x={x}&y={y}&z={z}', {
+          maxZoom: 22,
+          maxNativeZoom: 20,
+          subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+        }).addTo(m);
+      } else if (layerType === 'esri_sat') {
+        // Esri Satellite base imagery with high native zoom scaling
+        tileLayerRef.current = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+          maxZoom: 22,
+          maxNativeZoom: 18,
+          subdomains: ['a', 'b', 'c']
+        }).addTo(m);
+
+        // Esri World Boundaries & Places Labels overlay for crisp road/place names
+        labelLayerRef.current = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+          maxZoom: 22,
+          maxNativeZoom: 18,
+          subdomains: ['a', 'b', 'c']
+        }).addTo(m);
+      } else if (layerType === 'osm_street') {
+        // OpenStreetMap Street View
+        tileLayerRef.current = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 22,
+          maxNativeZoom: 19,
+          subdomains: ['a', 'b', 'c']
+        }).addTo(m);
+      } else {
+        // Google Hybrid Satellite + Roads
+        tileLayerRef.current = L.tileLayer('https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+          maxZoom: 22,
+          maxNativeZoom: 20,
+          subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+        }).addTo(m);
+      }
+    };
+
+    applyMapTileLayers(map, mapLayerType);
 
     // Repeated size invalidations to ensure full rendering across all device screen layouts without resetting zoom
     const triggerInvalidate = () => {
@@ -655,11 +758,12 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
     const map = mapInstanceRef.current;
 
     if (tileLayerRef.current) {
-      try {
-        map.removeLayer(tileLayerRef.current);
-      } catch (e) {
-        // ignore
-      }
+      try { map.removeLayer(tileLayerRef.current); } catch (e) {}
+      tileLayerRef.current = null;
+    }
+    if (labelLayerRef.current) {
+      try { map.removeLayer(labelLayerRef.current); } catch (e) {}
+      labelLayerRef.current = null;
     }
 
     if (mapLayerType === 'offline_canvas') {
@@ -681,24 +785,41 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
         maxZoom: 22,
         minZoom: 1
       }).addTo(map);
+    } else if (mapLayerType === 'google_roadmap') {
+      tileLayerRef.current = L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+        maxZoom: 22,
+        maxNativeZoom: 20,
+        subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+      }).addTo(map);
+    } else if (mapLayerType === 'google_terrain') {
+      tileLayerRef.current = L.tileLayer('https://{s}.google.com/vt/lyrs=p&x={x}&y={y}&z={z}', {
+        maxZoom: 22,
+        maxNativeZoom: 20,
+        subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+      }).addTo(map);
+    } else if (mapLayerType === 'esri_sat') {
+      tileLayerRef.current = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 22,
+        maxNativeZoom: 18,
+        subdomains: ['a', 'b', 'c']
+      }).addTo(map);
+
+      labelLayerRef.current = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 22,
+        maxNativeZoom: 18,
+        subdomains: ['a', 'b', 'c']
+      }).addTo(map);
+    } else if (mapLayerType === 'osm_street') {
+      tileLayerRef.current = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 22,
+        maxNativeZoom: 19,
+        subdomains: ['a', 'b', 'c']
+      }).addTo(map);
     } else {
-      let tileUrl = 'https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
-      let maxZoom = 21;
-      let subdomains: string[] = ['mt0', 'mt1', 'mt2', 'mt3'];
-
-      if (mapLayerType === 'esri_sat') {
-        tileUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
-        maxZoom = 19;
-        subdomains = ['a', 'b', 'c'];
-      } else if (mapLayerType === 'osm_street') {
-        tileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
-        maxZoom = 19;
-        subdomains = ['a', 'b', 'c'];
-      }
-
-      tileLayerRef.current = L.tileLayer(tileUrl, {
-        maxZoom,
-        subdomains
+      tileLayerRef.current = L.tileLayer('https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+        maxZoom: 22,
+        maxNativeZoom: 20,
+        subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
       }).addTo(map);
     }
   }, [mapLayerType]);
@@ -742,11 +863,11 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
 
     // 1. Draw User Current Location Pulse
     if (currentGpsPos) {
-      // Auto-center map on first valid position received (especially useful for Android native launch)
-      if (!hasAutoCenteredRef.current) {
+      // Auto-center / Follow map on current location if initial center or isAutoFollow is active
+      if (!hasAutoCenteredRef.current || isAutoFollow) {
         hasAutoCenteredRef.current = true;
         try {
-          map.flyTo([currentGpsPos.lat, currentGpsPos.lng], 18, { animate: true });
+          map.panTo([currentGpsPos.lat, currentGpsPos.lng], { animate: true, duration: 0.5 });
         } catch (e) {
           // ignore
         }
@@ -756,20 +877,31 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
       if (currentGpsPos.accuracy && currentGpsPos.accuracy > 0) {
         userAccuracyCircleRef.current = L.circle([currentGpsPos.lat, currentGpsPos.lng], {
           radius: currentGpsPos.accuracy,
-          color: '#3B82F6',
+          color: '#2563EB',
           fillColor: '#3B82F6',
-          fillOpacity: 0.15,
-          weight: 1
+          fillOpacity: 0.12,
+          weight: 1.5,
+          dashArray: '3, 3'
         }).addTo(markersGroup);
       }
 
-      // User Marker Dot
-      userMarkerRef.current = L.circleMarker([currentGpsPos.lat, currentGpsPos.lng], {
-        radius: 7,
-        color: '#FFFFFF',
-        fillColor: '#2563EB',
-        fillOpacity: 1,
-        weight: 2
+      // High-visibility animated walking radar icon
+      const walkingRadarIcon = L.divIcon({
+        className: 'gps-walking-live-pulse-marker',
+        html: `
+          <div style="position: relative; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">
+            <div style="position: absolute; width: 32px; height: 32px; border-radius: 50%; background: rgba(37, 99, 235, 0.35); border: 1px solid rgba(255, 255, 255, 0.8); animation: ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+            <div style="position: absolute; width: 20px; height: 20px; border-radius: 50%; background: #2563EB; border: 3px solid #FFFFFF; box-shadow: 0 0 12px rgba(37, 99, 235, 0.9);"></div>
+            <div style="position: absolute; width: 8px; height: 8px; border-radius: 50%; background: #60A5FA;"></div>
+          </div>
+        `,
+        iconSize: [32, 32],
+        iconAnchor: [16, 16]
+      });
+
+      userMarkerRef.current = L.marker([currentGpsPos.lat, currentGpsPos.lng], {
+        icon: walkingRadarIcon,
+        zIndexOffset: 1000
       }).addTo(markersGroup);
     }
 
@@ -787,76 +919,93 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
 
     if (gpsPoints.length >= 3) {
       polygonLayerRef.current = L.polygon(latLngs, {
-        color: '#10B981',
-        weight: 3,
-        fillColor: '#10B981',
-        fillOpacity: 0.35,
-        dashArray: undefined
+        color: '#00E676',
+        weight: 3.5,
+        fillColor: '#00E676',
+        fillOpacity: 0.20,
+        interactive: false
       }).addTo(map);
     } else if (gpsPoints.length >= 2) {
       polylineLayerRef.current = L.polyline(latLngs, {
-        color: '#10B981',
-        weight: 3,
-        dashArray: '5, 5'
+        color: '#00E676',
+        weight: 3.5,
+        dashArray: '6, 6',
+        interactive: false
       }).addTo(map);
     }
 
-    // 3. Draw Numbered Corner Markers
-    gpsPoints.forEach((point, index) => {
-      const isFirst = index === 0;
-      const isLast = index === gpsPoints.length - 1 && gpsPoints.length > 1;
+    // 3. Draw Numbered Corner Markers (Only when not actively auto walk-tracking, to keep map clean with only polyline)
+    if (!isGpsTracking) {
+      gpsPoints.forEach((point, index) => {
+        const isFirst = index === 0;
+        const isLast = index === gpsPoints.length - 1 && gpsPoints.length > 1;
 
-      const markerHtml = `
-        <div style="
-          width: 26px;
-          height: 26px;
-          border-radius: 50%;
-          background: ${isFirst ? '#059669' : isLast ? '#D97706' : '#1E293B'};
-          color: white;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-weight: bold;
-          font-size: 11px;
-          border: 2px solid white;
-          box-shadow: 0 2px 6px rgba(0,0,0,0.4);
-          cursor: grab;
-        ">
-          ${index + 1}
-        </div>
-      `;
+        const markerHtml = `
+          <div style="
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            background: ${isFirst ? '#059669' : isLast ? '#D97706' : '#1E293B'};
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 11px;
+            border: 2px solid white;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+            cursor: grab;
+          ">
+            ${index + 1}
+          </div>
+        `;
 
-      const customIcon = L.divIcon({
-        className: 'custom-gps-pin',
-        html: markerHtml,
-        iconSize: [26, 26],
-        iconAnchor: [13, 13]
+        const customIcon = L.divIcon({
+          className: 'custom-gps-pin',
+          html: markerHtml,
+          iconSize: [26, 26],
+          iconAnchor: [13, 13]
+        });
+
+        const marker = L.marker([point.lat, point.lng], {
+          icon: customIcon,
+          draggable: true
+        }).addTo(markersGroup);
+
+        // Point Drag Handler (for fine-tuning exact corner)
+        marker.on('dragend', (e) => {
+          const target = e.target as L.Marker;
+          const newLatLng = target.getLatLng();
+          setGpsPoints(prev =>
+            prev.map(p => p.id === point.id ? { ...p, lat: newLatLng.lat, lng: newLatLng.lng } : p)
+          );
+        });
+
+        // Bind info tooltip
+        marker.bindPopup(`
+          <div style="font-family: sans-serif; font-size: 11px; line-height: 1.4; padding: 2px;">
+            <b>কোণা #${index + 1}</b><br/>
+            Lat: ${point.lat.toFixed(6)}<br/>
+            Lng: ${point.lng.toFixed(6)}
+          </div>
+        `);
       });
+    }
 
-      const marker = L.marker([point.lat, point.lng], {
-        icon: customIcon,
-        draggable: true
-      }).addTo(markersGroup);
-
-      // Point Drag Handler (for fine-tuning exact corner)
-      marker.on('dragend', (e) => {
-        const target = e.target as L.Marker;
-        const newLatLng = target.getLatLng();
-        setGpsPoints(prev =>
-          prev.map(p => p.id === point.id ? { ...p, lat: newLatLng.lat, lng: newLatLng.lng } : p)
-        );
-      });
-
-      // Bind info tooltip
-      marker.bindPopup(`
-        <div style="font-family: sans-serif; font-size: 11px; line-height: 1.4; padding: 2px;">
-          <b>কোণা #${index + 1}</b><br/>
-          Lat: ${point.lat.toFixed(6)}<br/>
-          Lng: ${point.lng.toFixed(6)}
-        </div>
-      `);
-    });
-  }, [gpsPoints, currentGpsPos, activeTab]);
+    // Auto-fit bounds when walk tracking is active so the polyline area is clearly visible
+    if (isGpsTracking) {
+      const allCoords: [number, number][] = gpsPoints.map(p => [p.lat, p.lng]);
+      if (currentGpsPos && currentGpsPos.source !== 'ip') {
+        allCoords.push([currentGpsPos.lat, currentGpsPos.lng]);
+      }
+      if (allCoords.length >= 2) {
+        const bounds = L.latLngBounds(allCoords);
+        map.fitBounds(bounds, { padding: [45, 45], maxZoom: 20, animate: true });
+      } else if (allCoords.length === 1) {
+        map.flyTo(allCoords[0], 19, { animate: true });
+      }
+    }
+  }, [gpsPoints, currentGpsPos, activeTab, isGpsTracking]);
 
   // Center map on user location
   const handleLocateMe = async () => {
@@ -865,7 +1014,8 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
 
     try {
       const loc = await fetchBestLocation();
-      setCurrentGpsPos({ lat: loc.lat, lng: loc.lng, accuracy: loc.accuracy });
+      setCurrentGpsPos({ lat: loc.lat, lng: loc.lng, accuracy: loc.accuracy, source: loc.source });
+      setIsGpsOff(false);
       setGpsError(null);
 
       if (mapInstanceRef.current) {
@@ -877,14 +1027,18 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
       } else if (loc.source === 'network') {
         showToast('নেটওয়ার্ক/Wi-Fi ভিত্তিক অবস্থান ম্যাপে চিহ্নিত হয়েছে', 'info');
       } else {
-        showToast('IP ভিত্তিক এলাকা চিহ্নিত হয়েছে। সূক্ষ্ম জিপিএসের জন্য ডিভাইসের GPS অন রাখুন।', 'info');
+        showToast('আইপি ভিত্তিক অবস্থান চিহ্নিত হয়েছে। সূক্ষ্ম জিপিএসের জন্য ডিভাইসের GPS অন রাখুন।', 'info');
       }
     } catch (err: any) {
       if (err?.message === 'PERMISSION_DENIED') {
-        setGpsError('ব্রাউজার বা ডিভাইসে লোকেশন পারমিশন ব্লক করা আছে। সেটিংস থেকে Allow করুন।');
+        setIsGpsOff(true);
+        setGpsError('ব্রাউজার বা ডিভাইসে লোকেশন পারমিশন ব্লক করা আছে (Denied)। সেটিংস থেকে Allow করুন।');
         showToast('ব্রাউজারের সেটিংসে Location Permission অনুমতি (Allow) দিন।', 'warning');
       } else {
-        setGpsError('GPS অবস্থান পাওয়া যায়নি। ফোনের লোকেশন অন করুন বা ম্যাপে টাচ করে কোণা বসান।');
+        if (!currentGpsPos) {
+          setIsGpsOff(true);
+        }
+        setGpsError('ডিভাইসের জিপিএস বন্ধ (GPS Off) অথবা লোকেশন সার্ভিস বন্ধ।');
         showToast('GPS অবস্থান পাওয়া যায়নি। ফোনের লোকেশন চালু আছে কিনা পরীক্ষা করুন।', 'warning');
       }
     } finally {
@@ -901,20 +1055,33 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
 
   // Add current GPS location as a corner point
   const handleAddCurrentLocationPoint = async () => {
+    if (isGpsOff || currentGpsPos?.source === 'ip') {
+      showToast('ডিভাইসের জিপিএস বন্ধ (GPS Off)! ফোনের GPS চালু করুন বা ম্যাপে টাচ করে পিন বসান।', 'warning');
+    }
     let posToAdd = currentGpsPos;
-    if (!posToAdd) {
+    if (!posToAdd || posToAdd.source === 'ip') {
       showToast('GPS অবস্থান সংগ্রহ করা হচ্ছে...', 'info');
       setIsLocating(true);
       try {
         const loc = await fetchBestLocation();
-        posToAdd = { lat: loc.lat, lng: loc.lng, accuracy: loc.accuracy };
-        setCurrentGpsPos(posToAdd);
-        setGpsError(null);
+        if (loc.source === 'gps' || loc.source === 'network') {
+          posToAdd = { lat: loc.lat, lng: loc.lng, accuracy: loc.accuracy, source: loc.source };
+          setCurrentGpsPos(posToAdd);
+          setIsGpsOff(false);
+          setGpsError(null);
+        } else {
+          setIsGpsOff(true);
+          setGpsError('ডিভাইসের জিপিএস বন্ধ (GPS Off)।');
+          showToast('ডিভাইসের জিপিএস বন্ধ (GPS Off)! ফোনের GPS চালু করুন।', 'warning');
+          setIsLocating(false);
+          return;
+        }
       } catch (e: any) {
+        setIsGpsOff(true);
         if (e?.message === 'PERMISSION_DENIED') {
           showToast('ব্রাউজারের সেটিংসে Location Permission Allow করুন।', 'warning');
         } else {
-          showToast('GPS অবস্থান পাওয়া যায়নি। ফোনের লোকেশন চালু করুন বা ম্যাপে স্পর্শ করুন।', 'warning');
+          showToast('ডিভাইসের জিপিএস বন্ধ (GPS Off)! ফোনের লোকেশন চালু করুন বা ম্যাপে স্পর্শ করুন।', 'warning');
         }
         setIsLocating(false);
         return;
@@ -923,7 +1090,7 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
       }
     }
 
-    if (posToAdd) {
+    if (posToAdd && posToAdd.source !== 'ip') {
       const newPoint: GpsPoint = {
         id: Date.now().toString(),
         lat: posToAdd.lat,
@@ -1397,9 +1564,6 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
               <Compass size={18} className="text-emerald-300 animate-pulse" />
               <span>জমি বা মাঠের পরিমাপ</span>
             </h1>
-            <p className="text-[11px] text-emerald-100/80 leading-none">
-              GPS Polygon & Area Measurement Calculator
-            </p>
           </div>
         </div>
 
@@ -1612,50 +1776,48 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
                   <h2 className="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-1.5">
                     <span>জিপিএস পলিগন সার্ভে (GPS Survey)</span>
                   </h2>
-                  <p className="text-[10.5px] text-slate-500">
-                    ম্যাপে ট্যাপ করে বা মাঠে হেঁটে জমির সীমানা চিহ্নিত করুন
-                  </p>
                 </div>
               </div>
 
               {/* Map Layer Switch, Refresh & Fullscreen */}
               <div className="flex flex-wrap items-center gap-1.5">
-                <div className="bg-slate-100 p-0.5 rounded-lg flex text-[11px] shadow-xs">
+                <div className="bg-slate-100 p-0.5 rounded-lg flex flex-wrap items-center gap-0.5 text-[11px] shadow-xs">
                   <button
                     onClick={() => {
                       setMapLayerType('google_hybrid');
-                      showToast('স্যাটেলাইট ম্যাপ মোড চালু হয়েছে', 'info');
+                      showToast('গুগল হাইব্রিড স্যাটেলাইট চালু হয়েছে', 'info');
                     }}
                     className={`px-2 py-0.5 rounded-md font-semibold transition-all ${
-                      mapLayerType === 'google_hybrid' ? 'bg-[#1B5E20] text-white shadow-xs' : 'text-slate-600'
+                      mapLayerType === 'google_hybrid' ? 'bg-[#1B5E20] text-white shadow-xs' : 'text-slate-600 hover:bg-slate-200/60'
                     }`}
-                    title="গুগল হাইব্রিড স্যাটেলাইট"
+                    title="গুগল হাইব্রিড স্যাটেলাইট ভিউ"
                   >
                     স্যাটেলাইট
                   </button>
+                  <button
+                    onClick={() => {
+                      setMapLayerType('google_roadmap');
+                      showToast('গুগল নরমাল রোডম্যাপ ভিউ চালু হয়েছে', 'info');
+                    }}
+                    className={`px-2 py-0.5 rounded-md font-semibold transition-all ${
+                      mapLayerType === 'google_roadmap' ? 'bg-[#1B5E20] text-white shadow-xs' : 'text-slate-600 hover:bg-slate-200/60'
+                    }`}
+                    title="গুগল এইচডি পরিচ্ছন্ন রোডম্যাপ"
+                  >
+                    নরমাল ম্যাপ
+                  </button>
+
                   <button
                     onClick={() => {
                       setMapLayerType('esri_sat');
                       showToast('এসরি স্যাটেলাইট মোড চালু হয়েছে', 'info');
                     }}
                     className={`px-2 py-0.5 rounded-md font-semibold transition-all ${
-                      mapLayerType === 'esri_sat' ? 'bg-[#1B5E20] text-white shadow-xs' : 'text-slate-600'
+                      mapLayerType === 'esri_sat' ? 'bg-[#1B5E20] text-white shadow-xs' : 'text-slate-600 hover:bg-slate-200/60'
                     }`}
                     title="এসরি ওয়ার্ল্ড স্যাটেলাইট"
                   >
                     এসরি
-                  </button>
-                  <button
-                    onClick={() => {
-                      setMapLayerType('osm_street');
-                      showToast('স্ট্রিট ম্যাপ মোড চালু হয়েছে', 'info');
-                    }}
-                    className={`px-2 py-0.5 rounded-md font-semibold transition-all ${
-                      mapLayerType === 'osm_street' ? 'bg-[#1B5E20] text-white shadow-xs' : 'text-slate-600'
-                    }`}
-                    title="স্ট্রিট ম্যাপ ভিউ"
-                  >
-                    ম্যাপ
                   </button>
                   <button
                     onClick={() => {
@@ -1671,6 +1833,25 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
                     <span>অফলাইন</span>
                   </button>
                 </div>
+
+                {/* Live Auto Follow Walking Toggle Button */}
+                <button
+                  onClick={() => {
+                    const nextFollow = !isAutoFollow;
+                    setIsAutoFollow(nextFollow);
+                    showToast(nextFollow ? 'হেঁটে মাপার সময় ম্যাপ স্বয়ংক্রিয়ভাবে আপনাকে কেন্দ্র করবে (Auto-Follow On)' : 'ম্যানুয়াল ম্যাপ মোড চালু', 'info');
+                    if (nextFollow && currentGpsPos && mapInstanceRef.current) {
+                      mapInstanceRef.current.panTo([currentGpsPos.lat, currentGpsPos.lng], { animate: true });
+                    }
+                  }}
+                  className={`px-2 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all border ${
+                    isAutoFollow ? 'bg-blue-50 border-blue-300 text-blue-700 shadow-xs' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'
+                  }`}
+                  title="হেঁটে হেঁটে পরিমাপের সময় ম্যাপ আপনাকে সবসময় মাঝে বা কেন্দ্রে রাখবে"
+                >
+                  <span className={`w-2 h-2 rounded-full ${isAutoFollow ? 'bg-blue-600 animate-pulse' : 'bg-slate-400'}`}></span>
+                  <span>ফলো মি (লাইভ)</span>
+                </button>
 
                 <div className="flex items-center space-x-1">
                   <button
@@ -1718,21 +1899,87 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
               </div>
             )}
 
-            {/* GPS Warning if error */}
-            {gpsError && (
-              <div className="bg-amber-50 border border-amber-200 p-2 rounded-lg text-xs text-amber-800 flex items-center space-x-1.5">
-                <AlertCircle size={15} className="shrink-0 text-amber-600" />
-                <span>{gpsError} (তবে আপনি ম্যাপে স্পর্শ করেও কোণা বসাতে পারেন)</span>
+            {/* Dedicated GPS Live Status Bar */}
+            <div className="bg-slate-900 text-white rounded-xl p-2.5 shadow-sm border border-slate-700/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+              <div className="flex items-center space-x-2.5 min-w-0">
+                <div className="relative shrink-0 flex items-center justify-center w-3 h-3">
+                  {isGpsOff ? (
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
+                  ) : isLocating || !currentGpsPos ? (
+                    <RefreshCw size={13} className="animate-spin text-amber-400" />
+                  ) : (
+                    <>
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                    </>
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
+                    <span className="font-semibold text-slate-200 text-xs">GPS স্ট্যাটাস:</span>
+                    {isGpsOff ? (
+                      <span className="bg-rose-500/20 text-rose-300 px-2 py-0.5 rounded text-[10.5px] font-bold border border-rose-500/30 flex items-center gap-1">
+                        <WifiOff size={11} className="text-rose-400" />
+                        <span>জিপিএস বন্ধ / অনুমতি দিন</span>
+                      </span>
+                    ) : currentGpsPos ? (
+                      <span className={`px-2 py-0.5 rounded text-[10.5px] font-bold ${
+                        currentGpsPos.source === 'ip'
+                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                          : currentGpsPos.accuracy <= 15
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                          : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                      }`}>
+                        {currentGpsPos.source === 'ip'
+                          ? 'আইপি অবস্থান (GPS সংকেত খোঁজা হচ্ছে)'
+                          : currentGpsPos.accuracy <= 15
+                          ? 'সক্রিয় (উত্তম সিগন্যাল)'
+                          : 'সক্রিয় (অ্যাকুরেসি ±' + Math.round(currentGpsPos.accuracy) + ' মি)'}
+                      </span>
+                    ) : (
+                      <span className="bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded text-[10.5px] font-bold border border-amber-500/30">
+                        সিগন্যাল খোঁজা হচ্ছে...
+                      </span>
+                    )}
+                  </div>
+                  {currentGpsPos && !isGpsOff && (
+                    <div className="text-[11px] text-slate-300 flex items-center space-x-2 mt-1 flex-wrap">
+                      <span className="font-mono text-slate-200">
+                        {currentGpsPos.lat.toFixed(5)}, {currentGpsPos.lng.toFixed(5)}
+                      </span>
+                      <span className="text-slate-500">|</span>
+                      <span className="text-emerald-400 font-semibold">
+                        অ্যাকুরেসি: ±{Math.round(currentGpsPos.accuracy)} মি.
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+            </div>
+
+            {/* GPS Warning if explicitly Off */}
+            {isGpsOff && (
+              <div className="bg-rose-50 border border-rose-200 p-2.5 rounded-xl text-xs text-rose-900 flex items-center space-x-2 shadow-xs">
+                <AlertCircle size={16} className="shrink-0 text-rose-600" />
+                <div className="flex-1">
+                  <span className="font-bold block text-rose-950">
+                    {gpsError || 'ডিভাইসের জিপিএস বন্ধ (GPS Off) রয়েছে।'}
+                  </span>
+                  <span className="text-[11px] text-rose-800">
+                    ফোনের লোকেশন/GPS সার্ভিস অন করুন, অথবা স্যাটেলাইট ম্যাপে স্পর্শ করে ম্যানুয়ালি কোণা বসান।
+                  </span>
+                </div>
               </div>
             )}
 
             {/* Interactive Leaflet Map Container */}
-            <div className="relative rounded-xl overflow-hidden border border-slate-300 shadow-inner bg-slate-800 min-h-[230px]">
+            <div className="relative rounded-xl overflow-hidden border border-slate-300 shadow-inner bg-slate-800 min-h-[380px] -mx-1 sm:mx-0">
               <div
                 ref={mapContainerRef}
                 id="gps-land-survey-map-container"
                 className={`w-full transition-all duration-200 z-10 ${
-                  isMapExpanded ? 'h-[360px]' : 'h-[230px]'
+                  isMapExpanded ? 'h-[550px] sm:h-[620px]' : 'h-[380px] sm:h-[440px]'
                 }`}
               />
 
@@ -1748,9 +1995,10 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
                     <span>অফলাইন মোড</span>
                   </div>
                 )}
-                {currentGpsPos?.accuracy !== undefined && (
-                  <div className="bg-black/75 backdrop-blur-xs text-emerald-300 text-[10.5px] px-2 py-0.5 rounded-md font-medium flex items-center gap-1 shadow-md">
-                    <span>জিপিএস অ্যাকুরেসি: ±{Math.round(currentGpsPos.accuracy)} মি</span>
+                {isGpsOff && (
+                  <div className="bg-rose-950/85 backdrop-blur-xs text-rose-300 border border-rose-500/40 text-[10.5px] px-2 py-0.5 rounded-md font-bold flex items-center gap-1 shadow-md">
+                    <WifiOff size={11} className="text-rose-400" />
+                    <span>জিপিএস বন্ধ (GPS Off)</span>
                   </div>
                 )}
               </div>
@@ -1793,14 +2041,9 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
                   </button>
                 )}
               </div>
-
-              {/* Bottom Quick Map Instructions */}
-              <div className="absolute bottom-1.5 left-2 right-2 z-20 pointer-events-none">
-                <div className="bg-black/65 backdrop-blur-xs text-white text-[10px] text-center px-2 py-0.5 rounded-md shadow-xs">
-                  💡 জমির কোণাগুলোতে স্পর্শ করে পিন বসান। পিন ধরে সরিয়ে অবস্থান সূক্ষ্ম করতে পারেন।
-                </div>
-              </div>
             </div>
+
+
 
             {/* GPS Polygon Action Buttons */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
@@ -1815,16 +2058,69 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
                 <span>{isLocating ? 'খোঁজা হচ্ছে...' : 'বর্তমান GPS পয়েন্ট'}</span>
               </button>
 
-              {/* 2. Walk Tracking Mode */}
+              {/* 2. Walk Tracking Mode Button with Immediate Point Capture */}
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   if (!isGpsTracking) {
                     setIsGpsTracking(true);
-                    showToast('হেঁটে অটো ট্র্যাকিং চালু হয়েছে! মাঠের সীমানা বরাবর হাঁটুন...', 'success');
+                    
+                    // Immediately capture initial point if location exists
+                    let posToAdd = currentGpsPos;
+                    if (!posToAdd || posToAdd.source === 'ip') {
+                      try {
+                        const loc = await fetchBestLocation();
+                        if (loc.source === 'gps' || loc.source === 'network') {
+                          posToAdd = { lat: loc.lat, lng: loc.lng, accuracy: loc.accuracy, source: loc.source };
+                          setCurrentGpsPos(posToAdd);
+                          setIsGpsOff(false);
+                          setGpsError(null);
+                        }
+                      } catch (e) {
+                        // ignore
+                      }
+                    }
+
+                    let updatedPoints = gpsPoints;
+                    if (posToAdd && posToAdd.source !== 'ip') {
+                      const initialPoint: GpsPoint = {
+                        id: Date.now().toString(),
+                        lat: posToAdd.lat,
+                        lng: posToAdd.lng,
+                        accuracy: posToAdd.accuracy,
+                        timestamp: Date.now()
+                      };
+                      if (updatedPoints.length === 0) {
+                        updatedPoints = [initialPoint];
+                      } else {
+                        const last = updatedPoints[updatedPoints.length - 1];
+                        const dist = haversineDistanceMeters(last.lat, last.lng, posToAdd.lat, posToAdd.lng);
+                        if (dist >= trackingSensitivity) {
+                          updatedPoints = [...updatedPoints, initialPoint];
+                        }
+                      }
+                      setGpsPoints(updatedPoints);
+                    }
+
+                    // Perform immediate smooth map zoom & fitBounds to center polyline area
+                    if (mapInstanceRef.current) {
+                      const map = mapInstanceRef.current;
+                      const allCoords: [number, number][] = updatedPoints.map(p => [p.lat, p.lng]);
+                      if (posToAdd && posToAdd.source !== 'ip') {
+                        allCoords.push([posToAdd.lat, posToAdd.lng]);
+                      }
+                      if (allCoords.length >= 2) {
+                        const bounds = L.latLngBounds(allCoords);
+                        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 20, animate: true });
+                      } else if (allCoords.length === 1) {
+                        map.flyTo(allCoords[0], 19, { animate: true });
+                      }
+                    }
+
+                    showToast(`হেঁটে ট্র্যাকিং চালু! ১নং পয়েন্ট যুক্ত হয়েছে। প্রতি ${trackingSensitivity} মি হাঁটলে অটো পয়েন্ট যোগ হবে।`, 'success');
                   } else {
                     setIsGpsTracking(false);
-                    showToast('ট্র্যাকিং সমাপ্ত ও থামানো হয়েছে।', 'info');
+                    showToast('অটো ট্র্যাকিং থামানো হয়েছে। পলিগন তৈরি সম্পন্ন।', 'info');
                   }
                 }}
                 className={`flex items-center justify-center space-x-1.5 py-2 px-2.5 rounded-lg text-xs font-bold shadow-xs active:scale-98 transition-all ${
@@ -1869,8 +2165,10 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
               </button>
             </div>
 
+
+
             {/* Polygon Sides and Coordinate Breakdown (Collapsible / List) */}
-            {gpsPoints.length > 0 && (
+            {gpsPoints.length > 0 && !isGpsTracking && (
               <div className="bg-slate-50 rounded-xl p-2.5 border border-slate-200/80 space-y-1.5">
                 <div className="flex items-center justify-between text-xs font-bold text-slate-700">
                   <span className="flex items-center gap-1">

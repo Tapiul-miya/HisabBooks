@@ -89,7 +89,7 @@ export const ViewModeFilterRow: React.FC<ViewModeFilterRowProps> = ({
     (workDetailsOptions || []).forEach((work) => {
       if (!work || !work.trim()) return;
       const parsed = Utils.parseWorkDetails(work);
-      if (parsed.work === mainWork) {
+      if (mainWork === 'ALL' || parsed.work === mainWork) {
         if (parsed.year) yearsSet.add(parsed.year);
         if (parsed.session) sessionsSet.add(parsed.session);
         if (parsed.manager) managersSet.add(parsed.manager);
@@ -120,11 +120,15 @@ export const ViewModeFilterRow: React.FC<ViewModeFilterRowProps> = ({
     newDriver: string,
     newBed: string
   ) => {
-    if (!newMainWork) {
-      onWorkDetailsFilterChange('');
-      return;
-    }
-    const parts = [newMainWork, newYear, newSession, newManager, newVehicle, newDriver, newBed]
+    const parts = [
+      newMainWork === 'ALL' ? '' : newMainWork,
+      newYear,
+      newSession,
+      newManager,
+      newVehicle,
+      newDriver,
+      newBed
+    ]
       .map(s => s.trim())
       .filter(Boolean);
     onWorkDetailsFilterChange(parts.join(' | '));
@@ -198,7 +202,8 @@ export const ViewModeFilterRow: React.FC<ViewModeFilterRowProps> = ({
                 : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
             }`}
           >
-            <option value="">কিসের কাজ (সকল)</option>
+            <option value="">কিসের কাজ</option>
+            <option value="ALL">সকল</option>
             {mainWorkOptions.map((w) => (
               <option key={w} value={w} className="bg-white text-slate-800 font-normal">
                 {w}
