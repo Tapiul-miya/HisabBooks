@@ -221,21 +221,45 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
             return null;
           }
 
-          // Strictly use native GoogleAuth error handling — DO NOT trigger any web popup or redirect fallback
-          let detailMessage = 'গুগল অ্যাকাউন্ট সাইন-ইনে সমস্যা হয়েছে।';
+          // Prepare clear bug report details
+          let errorTypeMsg = '';
           if (errStr.includes('10') || errStr.toLowerCase().includes('developer_error')) {
-            detailMessage = 'গুগল সাইন-ইন এরর (Code 10): গুগল ক্লাউড কনসোলে এই APK-এর SHA-1 ফিঙ্গারপ্রিন্ট বা প্যাকেজ নেম ভেরিফিকেশন মেলেনি।';
+            errorTypeMsg = 'কারণ: গুগল ক্লাউড কনসোলে (GCP) এই APK-এর SHA-1 ফিঙ্গারপ্রিন্ট বা Package Name (com.hisabbook.app) যুক্ত করা হয়নি (Code 10: DEVELOPER_ERROR)।';
           } else if (errStr.includes('12500') || errStr.toLowerCase().includes('sign_in_failed')) {
-            detailMessage = 'গুগল সাইন-ইন এরর (12500): ডিভাইসের গুগল প্লে সার্ভিসেস বা ড্রাইভ পারমিশন কনফিগারেশন চেক করুন।';
+            errorTypeMsg = 'কারণ: গুগল প্লে সার্ভিসেস সমস্যা বা কনফিগারেশন অমিল (Code 12500: SIGN_IN_FAILED)।';
           } else if (errStr.includes('7') || errStr.toLowerCase().includes('network')) {
-            detailMessage = 'নেটওয়ার্ক এরর: ডিভাইসের ইন্টারনেট কানেকশন চেক করুন।';
-          } else if (errStr && errStr !== 'Something went wrong') {
-            detailMessage = `গুগল সাইন-ইন সমস্যা: ${errStr}`;
+            errorTypeMsg = 'কারণ: নেটওয়ার্ক সংযোগ সমস্যা (Code 7: NETWORK_ERROR)।';
           } else {
-            detailMessage = 'গুগল সাইন-ইন সমস্যা: প্লে সার্ভিসেস সংযোগে সমস্যা। ইন্টারনেট কানেকশন বা প্লে সার্ভিসেস আপডেট চেক করুন।';
+            errorTypeMsg = `কারণ: প্লে সার্ভিসেস / ওঅথ সমস্যা (${errStr || 'অজানা ত্রুটি'})।`;
           }
 
-          throw new Error(detailMessage);
+          const bugReportInfo = `[বাগ রিপোর্ট / ত্রুটির বিবরণ]:\n• মূল এরর: ${errStr || 'N/A'}\n• ${errorTypeMsg}`;
+
+          // If native GoogleAuth fails (e.g. Play Services issue or missing SHA-1 key in GCP),
+          // ask user via a Yes/No warning if they want to try Web Auth Popup
+          console.warn('Native GoogleAuth failed:', nativeErr);
+          const confirmWebFallback = window.confirm(
+            `গুগল প্লে সার্ভিসেসের মাধ্যমে সাইন-ইন সম্পন্ন করা যায়নি।\n\n${bugReportInfo}\n\nআপনি কি ওয়েব ব্রাউজার পপ-আপের মাধ্যমে গুগল সাইন-ইন চেষ্টা করতে চান?`
+          );
+
+          if (confirmWebFallback) {
+            try {
+              const result = await signInWithPopup(auth, provider);
+              const credential = GoogleAuthProvider.credentialFromResult(result);
+              const token = credential?.accessToken || (await result.user.getIdToken());
+              if (token) {
+                cachedAccessToken = token;
+                localStorage.setItem('google_drive_access_token', cachedAccessToken);
+                return { user: result.user, accessToken: cachedAccessToken };
+              }
+            } catch (fallbackErr: any) {
+              console.warn('Web Auth fallback also failed:', fallbackErr);
+              const fallbackMsg = fallbackErr?.message || String(fallbackErr);
+              throw new Error(`গুগল সাইন-ইন সম্পূর্ণ ব্যর্থ হয়েছে।\n${bugReportInfo}\n• Web Fallback Error: ${fallbackMsg}`);
+            }
+          }
+
+          throw new Error(`গুগল সাইন-ইন ত্রুটি:\n${bugReportInfo}`);
         }
       }
 
