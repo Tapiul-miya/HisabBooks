@@ -170,55 +170,19 @@ async function fetchBestLocation(): Promise<{
   accuracy: number;
   source: 'gps' | 'network' | 'ip';
 }> {
-  // 1. Try Capacitor native location if running in Capacitor Native app
-  if (Capacitor.isNativePlatform()) {
-    try {
-      const permResult = await Geolocation.requestPermissions();
-      if (permResult.location === 'granted' || permResult.coarseLocation === 'granted') {
-        try {
-          const pos = await Geolocation.getCurrentPosition({
-            enableHighAccuracy: true,
-            timeout: 8000,
-            maximumAge: 0
-          });
-          if (pos && pos.coords) {
-            return {
-              lat: pos.coords.latitude,
-              lng: pos.coords.longitude,
-              accuracy: pos.coords.accuracy || 10,
-              source: 'gps'
-            };
-          }
-        } catch (e1) {
-          const pos = await Geolocation.getCurrentPosition({
-            enableHighAccuracy: false,
-            timeout: 8000,
-            maximumAge: 30000
-          });
-          if (pos && pos.coords) {
-            return {
-              lat: pos.coords.latitude,
-              lng: pos.coords.longitude,
-              accuracy: pos.coords.accuracy || 100,
-              source: 'network'
-            };
-          }
-        }
-      } else {
-        throw new Error('PERMISSION_DENIED');
-      }
-    } catch (e: any) {
-      if (e?.message === 'PERMISSION_DENIED') throw e;
-    }
-  }
-
-  // 2. Web Geolocation - Tier 1: High Accuracy
+  // 1. Web Geolocation (runs seamlessly in Browser and Android Capacitor WebView with OS level stability)
   if (typeof navigator !== 'undefined' && navigator.geolocation) {
     try {
+      if (Capacitor.isNativePlatform()) {
+        try {
+          await Geolocation.requestPermissions();
+        } catch {}
+      }
+
       const highAccPos = await new Promise<GeolocationPosition>((resolve, reject) => {
         navigator.geolocation.getCurrentPosition(resolve, reject, {
           enableHighAccuracy: true,
-          timeout: 6000,
+          timeout: 10000,
           maximumAge: 5000
         });
       });
@@ -241,7 +205,7 @@ async function fetchBestLocation(): Promise<{
       const lowAccPos = await new Promise<GeolocationPosition>((resolve, reject) => {
         navigator.geolocation.getCurrentPosition(resolve, reject, {
           enableHighAccuracy: false,
-          timeout: 8000,
+          timeout: 10000,
           maximumAge: 60000
         });
       });
@@ -257,6 +221,31 @@ async function fetchBestLocation(): Promise<{
       if (lowErr?.code === 1) {
         throw new Error('PERMISSION_DENIED');
       }
+    }
+  }
+
+  // 2. Capacitor native location fallback if navigator.geolocation was not available
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const permResult = await Geolocation.requestPermissions();
+      if (permResult.location === 'granted' || permResult.coarseLocation === 'granted') {
+        const pos = await Geolocation.getCurrentPosition({
+          enableHighAccuracy: true,
+          timeout: 10000
+        });
+        if (pos && pos.coords) {
+          return {
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+            accuracy: pos.coords.accuracy || 10,
+            source: 'gps'
+          };
+        }
+      } else {
+        throw new Error('PERMISSION_DENIED');
+      }
+    } catch (e: any) {
+      if (e?.message === 'PERMISSION_DENIED') throw e;
     }
   }
 
@@ -481,7 +470,6 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
     };
 
     const startLocationTracking = async () => {
-      // 1. Immediately start location watching so Android OS keeps Status Bar Location Icon active
       try {
         if (Capacitor.isNativePlatform()) {
           try {
@@ -489,26 +477,11 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
           } catch (pe) {
             console.warn('Native permission request note:', pe);
           }
+        }
 
-          const capWatchId = await Geolocation.watchPosition(
-            { enableHighAccuracy: true, maximumAge: 3000, timeout: 20000 },
-            (pos, err) => {
-              if (isCancelled) return;
-              if (err || !pos?.coords) {
-                setIsGpsOff(true);
-                if (err?.code === 1) {
-                  setGpsError('ডিভাইসে লোকেশন পারমিশন বন্ধ আছে (Denied)।');
-                } else {
-                  setGpsError('ডিভাইসের GPS / লোকেশন অপশন বন্ধ রয়েছে (GPS Off)।');
-                }
-                return;
-              }
-              const { latitude, longitude, accuracy } = pos.coords;
-              handleNewLocationCoords(latitude, longitude, accuracy);
-            }
-          );
-          watchId = capWatchId;
-        } else if (typeof navigator !== 'undefined' && navigator.geolocation) {
+        // Web Geolocation watchPosition operates seamlessly across Chrome WebView & Capacitor Android
+        // providing a rock-solid, persistent GPS stream without OS status-bar blinking
+        if (typeof navigator !== 'undefined' && navigator.geolocation) {
           const webWatchId = navigator.geolocation.watchPosition(
             (pos) => {
               if (isCancelled) return;
@@ -527,73 +500,33 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
                 setGpsError('ডিভাইসের GPS / লোকেশন অপশন বন্ধ রয়েছে (GPS Off)।');
               }
             },
-            { enableHighAccuracy: true, maximumAge: 3000, timeout: 25000 }
+            { enableHighAccuracy: true, maximumAge: 0 }
           );
           watchId = webWatchId;
+        } else if (Capacitor.isNativePlatform()) {
+          const capWatchId = await Geolocation.watchPosition(
+            { enableHighAccuracy: true, maximumAge: 0 },
+            (pos, err) => {
+              if (isCancelled) return;
+              if (err || !pos?.coords) {
+                if (err?.message?.toLowerCase().includes('denied') || (err as any)?.code === 1) {
+                  setIsGpsOff(true);
+                  setGpsError('ডিভাইসে লোকেশন পারমিশন বন্ধ আছে (Denied)।');
+                } else if (err?.message?.toLowerCase().includes('disabled') || (err as any)?.code === 2) {
+                  setIsGpsOff(true);
+                  setGpsError('ডিভাইসের GPS / লোকেশন অপশন বন্ধ রয়েছে (GPS Off)।');
+                }
+                return;
+              }
+              const { latitude, longitude, accuracy } = pos.coords;
+              handleNewLocationCoords(latitude, longitude, accuracy);
+            }
+          );
+          watchId = capWatchId;
         }
       } catch (e) {
         console.warn('Watch location start error:', e);
       }
-
-      // 2. Parallel single-shot location fetch for quick initial center fallback
-      try {
-        const loc = await fetchBestLocation();
-        if (!isCancelled) {
-          handleNewLocationCoords(loc.lat, loc.lng, loc.accuracy);
-        }
-      } catch (err: any) {
-        if (isCancelled) return;
-        setIsGpsOff(true);
-        if (err?.message === 'PERMISSION_DENIED') {
-          setGpsError('ব্রাউজার বা ডিভাইসে লোকেশন পারমিশন ব্লক করা আছে (Permission Denied)।');
-        } else {
-          setGpsError('ডিভাইসের জিপিএস বন্ধ (GPS Off)। ফোনের লোকেশন চালু করুন।');
-        }
-      }
-
-      // 3. Watchdog fallback: ONLY if no location update has been received for > 12s, ping to revive
-      heartbeatTimer = setInterval(() => {
-        if (isCancelled) return;
-        const elapsed = Date.now() - lastPositionTimestamp;
-        // Only trigger one-shot recovery if the continuous stream stopped for over 12 seconds
-        if (elapsed > 12000) {
-          if (Capacitor.isNativePlatform()) {
-            Geolocation.getCurrentPosition({ enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 })
-              .then((pos) => {
-                if (isCancelled || !pos?.coords) return;
-                handleNewLocationCoords(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
-              })
-              .catch((err) => {
-                if (isCancelled) return;
-                if (elapsed > 20000) {
-                  setIsGpsOff(true);
-                  setGpsError(err?.message || 'স্যাটেলাইট জিপিএস সিগন্যাল পাওয়া যাচ্ছে না (GPS Inactive/Off)।');
-                }
-              });
-          } else if (typeof navigator !== 'undefined' && navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-              (pos) => {
-                if (isCancelled || !pos?.coords) return;
-                handleNewLocationCoords(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
-              },
-              (err) => {
-                if (isCancelled) return;
-                if (err.code === 1) {
-                  setIsGpsOff(true);
-                  setGpsError('লোকেশন পারমিশন বন্ধ আছে (Permission Denied)।');
-                } else if (err.code === 2) {
-                  setIsGpsOff(true);
-                  setGpsError('ডিভাইসের জিপিএস অপশন বন্ধ রয়েছে (GPS Off)।');
-                } else if (err.code === 3 && elapsed > 20000) {
-                  setIsGpsOff(true);
-                  setGpsError('স্যাটেলাইট জিপিএস সিগন্যাল পাওয়া যাচ্ছে না (GPS Inactive/Off)।');
-                }
-              },
-              { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
-            );
-          }
-        }
-      }, 5000);
     };
 
     startLocationTracking();
@@ -1063,6 +996,14 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
   // Center map on user location
   const handleLocateMe = async () => {
     setIsLocating(true);
+
+    if (currentGpsPos && currentGpsPos.source !== 'ip' && mapInstanceRef.current) {
+      mapInstanceRef.current.flyTo([currentGpsPos.lat, currentGpsPos.lng], 19, { animate: true });
+      showToast('বর্তমান অবস্থানে ম্যাপ ফোকাস করা হয়েছে', 'success');
+      setIsLocating(false);
+      return;
+    }
+
     showToast('GPS অবস্থান সংগ্রহ করা হচ্ছে...', 'info');
 
     try {
