@@ -409,6 +409,29 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
 
     let watchId: string | number | null = null;
     let isCancelled = false;
+    let heartbeatTimer: any = null;
+    let lastPositionTimestamp = Date.now();
+    let wakeLockSentinel: any = null;
+
+    // Request Screen Wake Lock so Android screen & CPU don't go to sleep while measuring
+    const requestWakeLock = async () => {
+      try {
+        if ('wakeLock' in navigator && (navigator as any).wakeLock) {
+          wakeLockSentinel = await (navigator as any).wakeLock.request('screen');
+        }
+      } catch (wlErr) {
+        console.log('WakeLock not supported or denied:', wlErr);
+      }
+    };
+    requestWakeLock();
+
+    // Re-acquire Wake Lock when tab becomes visible again
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        requestWakeLock();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     // Listen to browser permission state if supported
     if (typeof navigator !== 'undefined' && navigator.permissions && navigator.permissions.query) {
@@ -432,6 +455,31 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
       }).catch(() => {});
     }
 
+    const handleNewLocationCoords = (latitude: number, longitude: number, accuracy: number) => {
+      lastPositionTimestamp = Date.now();
+      setCurrentGpsPos({ lat: latitude, lng: longitude, accuracy, source: 'gps' });
+      setIsGpsOff(false);
+      setGpsError(null);
+
+      if (isGpsTrackingRef.current) {
+        // Filter out low accuracy drift points (> 35 meters) while walking
+        if (accuracy && accuracy > 35) return;
+
+        setGpsPoints((prev) => {
+          const minDistance = trackingSensitivityRef.current || 1.5;
+          if (prev.length === 0) {
+            return [{ id: Date.now().toString(), lat: latitude, lng: longitude, accuracy, timestamp: Date.now() }];
+          }
+          const last = prev[prev.length - 1];
+          const dist = haversineDistanceMeters(last.lat, last.lng, latitude, longitude);
+          if (dist >= minDistance) {
+            return [...prev, { id: Date.now().toString(), lat: latitude, lng: longitude, accuracy, timestamp: Date.now() }];
+          }
+          return prev;
+        });
+      }
+    };
+
     const startLocationTracking = async () => {
       // 1. Immediately start location watching so Android OS keeps Status Bar Location Icon active
       try {
@@ -443,41 +491,18 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
           }
 
           const capWatchId = await Geolocation.watchPosition(
-            { enableHighAccuracy: true, maximumAge: 0 },
+            { enableHighAccuracy: true, maximumAge: 3000, timeout: 20000 },
             (pos, err) => {
               if (isCancelled) return;
               if (err || !pos?.coords) {
                 if (err?.code === 1) {
                   setIsGpsOff(true);
                   setGpsError('ডিভাইসে লোকেশন পারমিশন বন্ধ আছে (Denied)।');
-                } else if (!currentGpsPos) {
-                  setIsGpsOff(true);
-                  setGpsError(err?.message || 'ডিভাইসের জিপিএস অপশন বন্ধ রয়েছে (GPS Off)।');
                 }
                 return;
               }
               const { latitude, longitude, accuracy } = pos.coords;
-              setCurrentGpsPos({ lat: latitude, lng: longitude, accuracy, source: 'gps' });
-              setIsGpsOff(false);
-              setGpsError(null);
-
-              if (isGpsTrackingRef.current) {
-                // Filter out low accuracy drift points (> 35 meters) while walking
-                if (accuracy && accuracy > 35) return;
-
-                setGpsPoints((prev) => {
-                  const minDistance = trackingSensitivityRef.current || 1.5;
-                  if (prev.length === 0) {
-                    return [{ id: Date.now().toString(), lat: latitude, lng: longitude, accuracy, timestamp: Date.now() }];
-                  }
-                  const last = prev[prev.length - 1];
-                  const dist = haversineDistanceMeters(last.lat, last.lng, latitude, longitude);
-                  if (dist >= minDistance) {
-                    return [...prev, { id: Date.now().toString(), lat: latitude, lng: longitude, accuracy, timestamp: Date.now() }];
-                  }
-                  return prev;
-                });
-              }
+              handleNewLocationCoords(latitude, longitude, accuracy);
             }
           );
           watchId = capWatchId;
@@ -487,27 +512,7 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
               if (isCancelled) return;
               if (!pos?.coords) return;
               const { latitude, longitude, accuracy } = pos.coords;
-              setCurrentGpsPos({ lat: latitude, lng: longitude, accuracy, source: 'gps' });
-              setIsGpsOff(false);
-              setGpsError(null);
-
-              if (isGpsTrackingRef.current) {
-                // Filter out low accuracy drift points (> 35 meters) while walking
-                if (accuracy && accuracy > 35) return;
-
-                setGpsPoints((prev) => {
-                  const minDistance = trackingSensitivityRef.current || 1.5;
-                  if (prev.length === 0) {
-                    return [{ id: Date.now().toString(), lat: latitude, lng: longitude, accuracy, timestamp: Date.now() }];
-                  }
-                  const last = prev[prev.length - 1];
-                  const dist = haversineDistanceMeters(last.lat, last.lng, latitude, longitude);
-                  if (dist >= minDistance) {
-                    return [...prev, { id: Date.now().toString(), lat: latitude, lng: longitude, accuracy, timestamp: Date.now() }];
-                  }
-                  return prev;
-                });
-              }
+              handleNewLocationCoords(latitude, longitude, accuracy);
             },
             (err) => {
               if (isCancelled) return;
@@ -518,11 +523,9 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
               } else if (err.code === 2 && !currentGpsPos) { // POSITION_UNAVAILABLE only if no pos yet
                 setIsGpsOff(true);
                 setGpsError('ডিভাইসের GPS / লোকেশন অপশন বন্ধ রয়েছে (GPS Off)।');
-              } else if (err.code === 3) { // TIMEOUT
-                console.log('GPS high-accuracy fix search timeout, retrying...');
               }
             },
-            { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+            { enableHighAccuracy: true, maximumAge: 3000, timeout: 25000 }
           );
           watchId = webWatchId;
         }
@@ -534,9 +537,7 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
       try {
         const loc = await fetchBestLocation();
         if (!isCancelled) {
-          setCurrentGpsPos({ lat: loc.lat, lng: loc.lng, accuracy: loc.accuracy, source: loc.source });
-          setIsGpsOff(false);
-          setGpsError(null);
+          handleNewLocationCoords(loc.lat, loc.lng, loc.accuracy);
         }
       } catch (err: any) {
         if (isCancelled) return;
@@ -548,12 +549,37 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
           setGpsError('ডিভাইসের জিপিএস বন্ধ (GPS Off)। ফোনের লোকেশন চালু করুন।');
         }
       }
+
+      // 3. Keep-Alive Heartbeat for Android WebView: if no update in > 4.5s, trigger active location poll
+      heartbeatTimer = setInterval(() => {
+        if (isCancelled) return;
+        const elapsed = Date.now() - lastPositionTimestamp;
+        if (elapsed > 4500 && typeof navigator !== 'undefined' && navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              if (isCancelled || !pos?.coords) return;
+              handleNewLocationCoords(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+            },
+            (err) => {
+              console.log('Heartbeat poll note:', err.message);
+            },
+            { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+          );
+        }
+      }, 4000);
     };
 
     startLocationTracking();
 
     return () => {
       isCancelled = true;
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      if (wakeLockSentinel) {
+        try {
+          wakeLockSentinel.release();
+        } catch {}
+      }
       if (watchId !== null) {
         if (typeof watchId === 'string') {
           Geolocation.clearWatch({ id: watchId });
