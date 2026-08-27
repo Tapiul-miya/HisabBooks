@@ -551,33 +551,49 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
         }
       }
 
-      // 3. Keep-Alive Heartbeat for Android WebView: if no update in > 4s, trigger active location poll
+      // 3. Watchdog fallback: ONLY if no location update has been received for > 12s, ping to revive
       heartbeatTimer = setInterval(() => {
         if (isCancelled) return;
         const elapsed = Date.now() - lastPositionTimestamp;
-        if (elapsed > 4000 && typeof navigator !== 'undefined' && navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition(
-            (pos) => {
-              if (isCancelled || !pos?.coords) return;
-              handleNewLocationCoords(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
-            },
-            (err) => {
-              if (isCancelled) return;
-              if (err.code === 1) {
-                setIsGpsOff(true);
-                setGpsError('লোকেশন পারমিশন বন্ধ আছে (Permission Denied)।');
-              } else if (err.code === 2) {
-                setIsGpsOff(true);
-                setGpsError('ডিভাইসের জিপিএস অপশন বন্ধ রয়েছে (GPS Off)।');
-              } else if (err.code === 3 && elapsed > 15000) {
-                setIsGpsOff(true);
-                setGpsError('স্যাটেলাইট জিপিএস সিগন্যাল পাওয়া যাচ্ছে না (GPS Inactive/Off)।');
-              }
-            },
-            { enableHighAccuracy: true, maximumAge: 3000, timeout: 8000 }
-          );
+        // Only trigger one-shot recovery if the continuous stream stopped for over 12 seconds
+        if (elapsed > 12000) {
+          if (Capacitor.isNativePlatform()) {
+            Geolocation.getCurrentPosition({ enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 })
+              .then((pos) => {
+                if (isCancelled || !pos?.coords) return;
+                handleNewLocationCoords(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+              })
+              .catch((err) => {
+                if (isCancelled) return;
+                if (elapsed > 20000) {
+                  setIsGpsOff(true);
+                  setGpsError(err?.message || 'স্যাটেলাইট জিপিএস সিগন্যাল পাওয়া যাচ্ছে না (GPS Inactive/Off)।');
+                }
+              });
+          } else if (typeof navigator !== 'undefined' && navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+              (pos) => {
+                if (isCancelled || !pos?.coords) return;
+                handleNewLocationCoords(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
+              },
+              (err) => {
+                if (isCancelled) return;
+                if (err.code === 1) {
+                  setIsGpsOff(true);
+                  setGpsError('লোকেশন পারমিশন বন্ধ আছে (Permission Denied)।');
+                } else if (err.code === 2) {
+                  setIsGpsOff(true);
+                  setGpsError('ডিভাইসের জিপিএস অপশন বন্ধ রয়েছে (GPS Off)।');
+                } else if (err.code === 3 && elapsed > 20000) {
+                  setIsGpsOff(true);
+                  setGpsError('স্যাটেলাইট জিপিএস সিগন্যাল পাওয়া যাচ্ছে না (GPS Inactive/Off)।');
+                }
+              },
+              { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+            );
+          }
         }
-      }, 4000);
+      }, 5000);
     };
 
     startLocationTracking();
