@@ -495,9 +495,11 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
             (pos, err) => {
               if (isCancelled) return;
               if (err || !pos?.coords) {
+                setIsGpsOff(true);
                 if (err?.code === 1) {
-                  setIsGpsOff(true);
                   setGpsError('ডিভাইসে লোকেশন পারমিশন বন্ধ আছে (Denied)।');
+                } else {
+                  setGpsError('ডিভাইসের GPS / লোকেশন অপশন বন্ধ রয়েছে (GPS Off)।');
                 }
                 return;
               }
@@ -520,7 +522,7 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
               if (err.code === 1) { // PERMISSION_DENIED
                 setIsGpsOff(true);
                 setGpsError('ব্রাউজার বা ডিভাইসে লোকেশন পারমিশন বন্ধ আছে। সেটিংস থেকে Allow করুন।');
-              } else if (err.code === 2 && !currentGpsPos) { // POSITION_UNAVAILABLE only if no pos yet
+              } else if (err.code === 2) { // POSITION_UNAVAILABLE (GPS Off)
                 setIsGpsOff(true);
                 setGpsError('ডিভাইসের GPS / লোকেশন অপশন বন্ধ রয়েছে (GPS Off)।');
               }
@@ -541,29 +543,38 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
         }
       } catch (err: any) {
         if (isCancelled) return;
+        setIsGpsOff(true);
         if (err?.message === 'PERMISSION_DENIED') {
-          setIsGpsOff(true);
           setGpsError('ব্রাউজার বা ডিভাইসে লোকেশন পারমিশন ব্লক করা আছে (Permission Denied)।');
-        } else if (!currentGpsPos) {
-          setIsGpsOff(true);
+        } else {
           setGpsError('ডিভাইসের জিপিএস বন্ধ (GPS Off)। ফোনের লোকেশন চালু করুন।');
         }
       }
 
-      // 3. Keep-Alive Heartbeat for Android WebView: if no update in > 4.5s, trigger active location poll
+      // 3. Keep-Alive Heartbeat for Android WebView: if no update in > 4s, trigger active location poll
       heartbeatTimer = setInterval(() => {
         if (isCancelled) return;
         const elapsed = Date.now() - lastPositionTimestamp;
-        if (elapsed > 4500 && typeof navigator !== 'undefined' && navigator.geolocation) {
+        if (elapsed > 4000 && typeof navigator !== 'undefined' && navigator.geolocation) {
           navigator.geolocation.getCurrentPosition(
             (pos) => {
               if (isCancelled || !pos?.coords) return;
               handleNewLocationCoords(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy);
             },
             (err) => {
-              console.log('Heartbeat poll note:', err.message);
+              if (isCancelled) return;
+              if (err.code === 1) {
+                setIsGpsOff(true);
+                setGpsError('লোকেশন পারমিশন বন্ধ আছে (Permission Denied)।');
+              } else if (err.code === 2) {
+                setIsGpsOff(true);
+                setGpsError('ডিভাইসের জিপিএস অপশন বন্ধ রয়েছে (GPS Off)।');
+              } else if (err.code === 3 && elapsed > 15000) {
+                setIsGpsOff(true);
+                setGpsError('স্যাটেলাইট জিপিএস সিগন্যাল পাওয়া যাচ্ছে না (GPS Inactive/Off)।');
+              }
             },
-            { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+            { enableHighAccuracy: true, maximumAge: 3000, timeout: 8000 }
           );
         }
       }, 4000);

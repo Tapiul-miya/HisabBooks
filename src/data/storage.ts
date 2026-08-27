@@ -118,22 +118,23 @@ let idbInstance: IDBDatabase | null = null;
 let idbOpenPromise: Promise<IDBDatabase | null> | null = null;
 
 // Safe IDB Connection Manager
-async function getIDBConnection(): Promise<IDBDatabase | null> {
+async function getIDBConnection(forceNew: boolean = false): Promise<IDBDatabase | null> {
   if (typeof window === 'undefined' || typeof indexedDB === 'undefined') {
     return null;
   }
 
-  if (idbInstance) {
+  if (!forceNew && idbInstance) {
     try {
-      // Test if transaction is executable
-      idbInstance.transaction(DB_STORE_NAME, 'readonly');
+      // Test if transaction is executable on current connection without closing error
+      const testTx = idbInstance.transaction(DB_STORE_NAME, 'readonly');
+      testTx.abort();
       return idbInstance;
     } catch {
       idbInstance = null;
     }
   }
 
-  if (idbOpenPromise) return idbOpenPromise;
+  if (!forceNew && idbOpenPromise) return idbOpenPromise;
 
   idbOpenPromise = new Promise<IDBDatabase | null>((resolve) => {
     try {
@@ -157,6 +158,9 @@ async function getIDBConnection(): Promise<IDBDatabase | null> {
         };
         db.onversionchange = () => {
           try { db.close(); } catch {}
+          idbInstance = null;
+        };
+        db.onerror = () => {
           idbInstance = null;
         };
         idbOpenPromise = null;
@@ -187,32 +191,46 @@ async function getStoredDbBinary(): Promise<Uint8Array | null> {
     return cachedDbBinary;
   }
 
-  // 1. Try IndexedDB
-  try {
-    const db = await getIDBConnection();
-    if (db) {
-      const idbData = await new Promise<Uint8Array | null>((resolve) => {
-        try {
-          const tx = db.transaction(DB_STORE_NAME, 'readonly');
-          const store = tx.objectStore(DB_STORE_NAME);
-          const getReq = store.get(DB_FILE_KEY);
-          getReq.onsuccess = () => {
-            resolve(getReq.result || null);
-          };
-          getReq.onerror = () => resolve(null);
-          tx.onabort = () => resolve(null);
-        } catch {
-          resolve(null);
-        }
-      });
+  // 1. Try IndexedDB with automatic retry if database is closing
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const db = await getIDBConnection(attempt > 0);
+      if (db) {
+        const idbData = await new Promise<Uint8Array | null>((resolve) => {
+          try {
+            const tx = db.transaction(DB_STORE_NAME, 'readonly');
+            const store = tx.objectStore(DB_STORE_NAME);
+            const getReq = store.get(DB_FILE_KEY);
+            getReq.onsuccess = () => {
+              resolve(getReq.result || null);
+            };
+            getReq.onerror = () => {
+              idbInstance = null;
+              resolve(null);
+            };
+            tx.onabort = () => {
+              idbInstance = null;
+              resolve(null);
+            };
+            tx.onerror = () => {
+              idbInstance = null;
+              resolve(null);
+            };
+          } catch (txErr) {
+            idbInstance = null;
+            resolve(null);
+          }
+        });
 
-      if (idbData && idbData.length > 0) {
-        cachedDbBinary = idbData;
-        return idbData;
+        if (idbData && idbData.length > 0) {
+          cachedDbBinary = idbData;
+          return idbData;
+        }
       }
+    } catch (e) {
+      idbInstance = null;
+      console.warn('IDB read warning, checking fallback:', e);
     }
-  } catch (e) {
-    console.warn('IDB read warning, checking fallback:', e);
   }
 
   // 2. Try LocalStorage Fallback
@@ -290,116 +308,206 @@ async function saveDbBinary(data: Uint8Array): Promise<void> {
   return saveQueue;
 }
 
+async function getWasmBinary(): Promise<ArrayBuffer> {
+  // 1. Try IndexedDB cache for instant offline startup
+  try {
+    const idb = await getIDBConnection();
+    if (idb) {
+      const cached = await new Promise<ArrayBuffer | null>((resolve) => {
+        try {
+          const tx = idb.transaction(DB_STORE_NAME, 'readonly');
+          const store = tx.objectStore(DB_STORE_NAME);
+          const req = store.get('sql_wasm_binary_cache_v1');
+          req.onsuccess = () => resolve(req.result || null);
+          req.onerror = () => {
+            idbInstance = null;
+            resolve(null);
+          };
+          tx.onerror = () => {
+            idbInstance = null;
+            resolve(null);
+          };
+        } catch {
+          idbInstance = null;
+          resolve(null);
+        }
+      });
+      if (cached && cached.byteLength > 100000) {
+        const u8 = new Uint8Array(cached);
+        // Verify WebAssembly magic header: 0x00 0x61 0x73 0x6d (\0asm)
+        if (u8[0] === 0x00 && u8[1] === 0x61 && u8[2] === 0x73 && u8[3] === 0x6d) {
+          return cached;
+        }
+      }
+    }
+  } catch {
+    idbInstance = null;
+  }
+
+  // 2. Candidate fetch URLs (Local, Vite asset, Public, CDN fallbacks)
+  const candidateUrls: string[] = [];
+  if (sqlWasmUrl) candidateUrls.push(sqlWasmUrl);
+  candidateUrls.push('/sql-wasm.wasm');
+  candidateUrls.push('sql-wasm.wasm');
+  candidateUrls.push('./sql-wasm.wasm');
+  if (typeof window !== 'undefined' && window.location) {
+    candidateUrls.push(`${window.location.origin}/sql-wasm.wasm`);
+  }
+  // CDN fallbacks
+  candidateUrls.push('https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.12.0/sql-wasm.wasm');
+  candidateUrls.push('https://cdn.jsdelivr.net/npm/sql.js@1.12.0/dist/sql-wasm.wasm');
+  candidateUrls.push('https://unpkg.com/sql.js@1.12.0/dist/sql-wasm.wasm');
+
+  for (const url of candidateUrls) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) {
+        const buf = await res.arrayBuffer();
+        if (buf.byteLength > 100000) {
+          const u8 = new Uint8Array(buf);
+          // Verify valid wasm header: 0x00 0x61 0x73 0x6d
+          if (u8[0] === 0x00 && u8[1] === 0x61 && u8[2] === 0x73 && u8[3] === 0x6d) {
+            // Cache asynchronously in IndexedDB for future instant offline loading
+            getIDBConnection().then((idb) => {
+              if (idb) {
+                try {
+                  const tx = idb.transaction(DB_STORE_NAME, 'readwrite');
+                  tx.objectStore(DB_STORE_NAME).put(buf, 'sql_wasm_binary_cache_v1');
+                } catch {}
+              }
+            }).catch(() => {});
+            return buf;
+          }
+        }
+      }
+    } catch {}
+  }
+
+  throw new Error('Failed to load sql-wasm.wasm from local and CDN sources');
+}
+
 async function getSqliteDb(): Promise<Database> {
   if (sqliteDb) return sqliteDb;
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
-    if (!SQL) {
-      SQL = await initSqlJs({
-        locateFile: (file) => {
-          if (file.endsWith('.wasm')) {
-            return sqlWasmUrl || '/sql-wasm.wasm';
-          }
-          return file;
-        }
-      });
-    }
-
-    const savedBinary = await getStoredDbBinary();
-    let db: Database;
-    if (savedBinary && savedBinary.length > 0) {
-      db = new SQL.Database(savedBinary);
-    } else {
-      db = new SQL.Database();
-    }
-
-    // 1. Create SQLite tables and indexes
-    db.run(`
-      CREATE TABLE IF NOT EXISTS hisab (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT DEFAULT '',
-        mobile TEXT DEFAULT '',
-        address TEXT DEFAULT '',
-        hisabType TEXT DEFAULT '',
-        workDetails TEXT DEFAULT '',
-        date TEXT DEFAULT '',
-        stm TEXT DEFAULT '',
-        qty REAL DEFAULT 0,
-        unit TEXT DEFAULT '',
-        rate REAL DEFAULT 0,
-        amount REAL DEFAULT 0,
-        billStm TEXT DEFAULT '',
-        bill REAL DEFAULT 0,
-        paidStm TEXT DEFAULT '',
-        paid REAL DEFAULT 0,
-        due REAL DEFAULT 0,
-        spendStm TEXT DEFAULT '',
-        spend REAL DEFAULT 0,
-        profit REAL DEFAULT 0,
-        cashoutStm TEXT DEFAULT '',
-        cashout REAL DEFAULT 0,
-        credit REAL DEFAULT 0,
-        optional TEXT DEFAULT ''
-      );
-
-      CREATE INDEX IF NOT EXISTS idx_hisab_user ON hisab(name, hisabType, address, mobile, workDetails);
-      CREATE INDEX IF NOT EXISTS idx_hisab_date ON hisab(date, hisabType, workDetails);
-      CREATE INDEX IF NOT EXISTS idx_hisab_due ON hisab(due);
-    `);
-
-    // Migration: ensure all new columns exist for existing databases
     try {
-      const tableInfo = db.exec("PRAGMA table_info(hisab);");
-      const existingCols = new Set<string>();
-      if (tableInfo.length > 0 && tableInfo[0].values) {
-        for (const row of tableInfo[0].values) {
-          existingCols.add(String(row[1]));
+      if (!SQL) {
+        try {
+          const wasmBinary = await getWasmBinary();
+          SQL = await initSqlJs({ wasmBinary });
+        } catch (wasmErr) {
+          console.warn('Wasm binary load fallback to locateFile:', wasmErr);
+          SQL = await initSqlJs({
+            locateFile: (file) => {
+              if (file.endsWith('.wasm')) {
+                return sqlWasmUrl || '/sql-wasm.wasm';
+              }
+              return file;
+            }
+          });
         }
       }
 
-      const columnsToAdd: { name: string; type: string; defaultVal: string }[] = [
-        { name: 'spendStm', type: 'TEXT', defaultVal: "''" },
-        { name: 'spend', type: 'REAL', defaultVal: '0' },
-        { name: 'profit', type: 'REAL', defaultVal: '0' },
-        { name: 'cashoutStm', type: 'TEXT', defaultVal: "''" },
-        { name: 'cashout', type: 'REAL', defaultVal: '0' },
-        { name: 'credit', type: 'REAL', defaultVal: '0' },
-        { name: 'optional', type: 'TEXT', defaultVal: "''" },
-      ];
-
-      for (const col of columnsToAdd) {
-        if (!existingCols.has(col.name)) {
-          db.run(`ALTER TABLE hisab ADD COLUMN ${col.name} ${col.type} DEFAULT ${col.defaultVal};`);
-        }
+      const savedBinary = await getStoredDbBinary();
+      let db: Database;
+      if (savedBinary && savedBinary.length > 0) {
+        db = new SQL.Database(savedBinary);
+      } else {
+        db = new SQL.Database();
       }
-    } catch (e) {
-      console.warn('Migration check warning:', e);
-    }
 
-    // Check count for seeding
-    const res = db.exec('SELECT COUNT(id) AS count FROM hisab');
-    const count = res.length > 0 && res[0].values.length > 0 ? Number(res[0].values[0][0]) : 0;
-    if (count === 0) {
-      const stmt = db.prepare(`
-        INSERT INTO hisab (name, mobile, address, hisabType, workDetails, date, stm, qty, unit, rate, amount, billStm, bill, paidStm, paid, due, spendStm, spend, profit, cashoutStm, cashout, credit, optional)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      // 1. Create SQLite tables and indexes
+      db.run(`
+        CREATE TABLE IF NOT EXISTS hisab (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT DEFAULT '',
+          mobile TEXT DEFAULT '',
+          address TEXT DEFAULT '',
+          hisabType TEXT DEFAULT '',
+          workDetails TEXT DEFAULT '',
+          date TEXT DEFAULT '',
+          stm TEXT DEFAULT '',
+          qty REAL DEFAULT 0,
+          unit TEXT DEFAULT '',
+          rate REAL DEFAULT 0,
+          amount REAL DEFAULT 0,
+          billStm TEXT DEFAULT '',
+          bill REAL DEFAULT 0,
+          paidStm TEXT DEFAULT '',
+          paid REAL DEFAULT 0,
+          due REAL DEFAULT 0,
+          spendStm TEXT DEFAULT '',
+          spend REAL DEFAULT 0,
+          profit REAL DEFAULT 0,
+          cashoutStm TEXT DEFAULT '',
+          cashout REAL DEFAULT 0,
+          credit REAL DEFAULT 0,
+          optional TEXT DEFAULT ''
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_hisab_user ON hisab(name, hisabType, address, mobile, workDetails);
+        CREATE INDEX IF NOT EXISTS idx_hisab_date ON hisab(date, hisabType, workDetails);
+        CREATE INDEX IF NOT EXISTS idx_hisab_due ON hisab(due);
       `);
-      for (const item of INITIAL_SAMPLE_DATA) {
-        stmt.run([
-          item.name, item.mobile, item.address, item.hisabType, item.workDetails,
-          item.date, item.stm, item.qty, item.unit, item.rate, item.amount,
-          item.billStm, item.bill, item.paidStm, item.paid, item.due,
-          item.spendStm || '', item.spend || 0, item.profit || 0, item.cashoutStm || '', item.cashout || 0, item.credit || 0,
-          item.optional
-        ]);
-      }
-      stmt.free();
-      await saveDbBinary(db.export());
-    }
 
-    sqliteDb = db;
-    return db;
+      // Migration: ensure all new columns exist for existing databases
+      try {
+        const tableInfo = db.exec("PRAGMA table_info(hisab);");
+        const existingCols = new Set<string>();
+        if (tableInfo.length > 0 && tableInfo[0].values) {
+          for (const row of tableInfo[0].values) {
+            existingCols.add(String(row[1]));
+          }
+        }
+
+        const columnsToAdd: { name: string; type: string; defaultVal: string }[] = [
+          { name: 'spendStm', type: 'TEXT', defaultVal: "''" },
+          { name: 'spend', type: 'REAL', defaultVal: '0' },
+          { name: 'profit', type: 'REAL', defaultVal: '0' },
+          { name: 'cashoutStm', type: 'TEXT', defaultVal: "''" },
+          { name: 'cashout', type: 'REAL', defaultVal: '0' },
+          { name: 'credit', type: 'REAL', defaultVal: '0' },
+          { name: 'optional', type: 'TEXT', defaultVal: "''" },
+        ];
+
+        for (const col of columnsToAdd) {
+          if (!existingCols.has(col.name)) {
+            db.run(`ALTER TABLE hisab ADD COLUMN ${col.name} ${col.type} DEFAULT ${col.defaultVal};`);
+          }
+        }
+      } catch (e) {
+        console.warn('Migration check warning:', e);
+      }
+
+      // Check count for seeding
+      const res = db.exec('SELECT COUNT(id) AS count FROM hisab');
+      const count = res.length > 0 && res[0].values.length > 0 ? Number(res[0].values[0][0]) : 0;
+      if (count === 0) {
+        const stmt = db.prepare(`
+          INSERT INTO hisab (name, mobile, address, hisabType, workDetails, date, stm, qty, unit, rate, amount, billStm, bill, paidStm, paid, due, spendStm, spend, profit, cashoutStm, cashout, credit, optional)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        for (const item of INITIAL_SAMPLE_DATA) {
+          stmt.run([
+            item.name, item.mobile, item.address, item.hisabType, item.workDetails,
+            item.date, item.stm, item.qty, item.unit, item.rate, item.amount,
+            item.billStm, item.bill, item.paidStm, item.paid, item.due,
+            item.spendStm || '', item.spend || 0, item.profit || 0, item.cashoutStm || '', item.cashout || 0, item.credit || 0,
+            item.optional
+          ]);
+        }
+        stmt.free();
+        await saveDbBinary(db.export());
+      }
+
+      sqliteDb = db;
+      return db;
+    } catch (err) {
+      initPromise = null;
+      sqliteDb = null;
+      throw err;
+    }
   })();
 
   return initPromise;
