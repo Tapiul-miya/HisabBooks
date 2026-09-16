@@ -20,7 +20,11 @@ import {
   Layers,
   ChevronDown,
   ChevronUp,
-  SlidersHorizontal
+  ChevronLeft,
+  ChevronRight,
+  SlidersHorizontal,
+  Copy,
+  Check
 } from 'lucide-react';
 import { VehicleHisab, HisabTypeOption, GroupByMode } from '../types';
 import { Utils } from '../util/utils';
@@ -195,26 +199,40 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
     };
   }, []);
 
-  const getHisabTypeLabel = (key: string) => {
-    const found = TYPE_OPTIONS.find(o => o.key === key);
-    return found ? found.labelBn : key;
-  };
+  interface CustomerSuggestion {
+    name: string;
+    mobile: string;
+    address: string;
+  }
 
-  const suggestions = useMemo(() => {
+  const suggestions = useMemo<CustomerSuggestion[]>(() => {
     if (!allEntries.length) return [];
     const query = name.trim().toLowerCase();
 
-    // Deduplicate profiles by name + hisabType + mobile + address + workDetails
-    const map = new Map<string, VehicleHisab>();
+    // Deduplicate profiles by customer name + mobile + address
+    const map = new Map<string, CustomerSuggestion>();
     for (const item of allEntries) {
       if (!item.name || !item.name.trim()) continue;
-      const key = `${item.name.trim().toLowerCase()}_${item.hisabType}_${(item.mobile || '').trim()}_${(item.address || '').trim()}_${(item.workDetails || '').trim()}`;
+      const cleanName = item.name.trim();
+      const cleanMobile = (item.mobile || '').trim();
+      const cleanAddress = (item.address || '').trim();
+      const key = `${cleanName.toLowerCase()}|${cleanMobile.toLowerCase()}|${cleanAddress.toLowerCase()}`;
       if (!map.has(key)) {
-        map.set(key, item);
+        map.set(key, {
+          name: cleanName,
+          mobile: cleanMobile,
+          address: cleanAddress,
+        });
       }
     }
 
-    const uniqueList = Array.from(map.values());
+    const uniqueList = Array.from(map.values()).filter((item, _, arr) => {
+      // If mobile and address are both empty, but we already have an entry with same name having mobile or address, omit the empty one
+      if (!item.mobile && !item.address) {
+        return !arr.some(other => other.name.toLowerCase() === item.name.toLowerCase() && (other.mobile || other.address));
+      }
+      return true;
+    });
 
     if (!query) {
       return uniqueList.slice(0, 6);
@@ -222,12 +240,128 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
 
     return uniqueList.filter(item => {
       const matchName = item.name.toLowerCase().includes(query);
-      const matchMobile = (item.mobile || '').toLowerCase().includes(query);
-      const matchAddress = (item.address || '').toLowerCase().includes(query);
-      const matchWork = (item.workDetails || '').toLowerCase().includes(query);
-      return matchName || matchMobile || matchAddress || matchWork;
+      const matchMobile = item.mobile.toLowerCase().includes(query);
+      const matchAddress = item.address.toLowerCase().includes(query);
+      return matchName || matchMobile || matchAddress;
     }).slice(0, 8);
   }, [allEntries, name]);
+
+  const toBnNum = (n: number | string): string => {
+    const bn = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+    return String(n).replace(/\d/g, (d) => bn[parseInt(d, 10)]);
+  };
+
+  const customerMatchingWorkDetailsList = useMemo(() => {
+    if (!allEntries.length) return [];
+    const cleanName = name.trim().toLowerCase();
+    const cleanMobile = mobile.trim().toLowerCase();
+    const cleanAddress = address.trim().toLowerCase();
+    const cleanWorkDetails = workDetails.trim().toLowerCase();
+    const cleanHisabType = selectedOption.key;
+
+    if (!cleanName && !cleanMobile && !cleanAddress && !cleanWorkDetails) return [];
+
+    const matched = allEntries.filter(item => {
+      const itemName = (item.name || '').trim().toLowerCase();
+      const itemMobile = (item.mobile || '').trim().toLowerCase();
+      const itemAddress = (item.address || '').trim().toLowerCase();
+      const itemWork = (Utils.parseWorkDetails(item.workDetails || '').work || item.workDetails || '').trim().toLowerCase();
+      const itemHisabType = item.hisabType || '';
+
+      if (cleanName && !(itemName === cleanName || itemName.includes(cleanName) || cleanName.includes(itemName))) {
+        return false;
+      }
+      if (cleanMobile && !(itemMobile === cleanMobile || itemMobile.includes(cleanMobile) || cleanMobile.includes(itemMobile))) {
+        return false;
+      }
+      if (cleanAddress && !(itemAddress === cleanAddress || itemAddress.includes(cleanAddress) || cleanAddress.includes(itemAddress))) {
+        return false;
+      }
+      if (cleanHisabType && itemHisabType && itemHisabType !== cleanHisabType) {
+        return false;
+      }
+      if (cleanWorkDetails && !(itemWork === cleanWorkDetails || itemWork.includes(cleanWorkDetails) || cleanWorkDetails.includes(itemWork))) {
+        return false;
+      }
+
+      return true;
+    });
+
+    // Sort by date descending (newest entries first)
+    matched.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+    return matched;
+  }, [allEntries, name, mobile, address, workDetails, selectedOption.key]);
+
+  const [customerWorkDetailsIndex, setCustomerWorkDetailsIndex] = useState<number>(-1);
+  const [isStmCopied, setIsStmCopied] = useState<boolean>(false);
+
+  const applyMatchingHisabItem = (item: VehicleHisab) => {
+    if (!item) return;
+
+    if (item.hisabType) {
+      const opt = TYPE_OPTIONS.find(o => o.key === item.hisabType);
+      if (opt) setSelectedOption(opt);
+    }
+    if (item.date && !isDateFrozen) {
+      setDate(item.date);
+    }
+
+    const rawWorkDetails = item.workDetails || '';
+    if (rawWorkDetails.includes('|')) {
+      const parts = rawWorkDetails.split('|').map(p => p.trim());
+      setWorkDetails(parts[0] || '');
+      setYear(parts[1] || '');
+      setSession(parts[2] || '');
+      setManagerName(parts[3] || '');
+      setVehicleName(parts[4] || '');
+      setDriverName(parts[5] || '');
+      setTrolleyBed(parts[6] || '');
+    } else {
+      setWorkDetails(rawWorkDetails);
+      setYear('');
+      setSession('');
+      setManagerName('');
+      setVehicleName('');
+      setDriverName('');
+      setTrolleyBed('');
+    }
+
+    // Populate STM / Quantity (কাজের পরিমাপ সূত্র বা পরিমাণ)
+    if (item.stm) {
+      setStm(item.stm);
+    } else if (item.qty !== undefined && item.qty !== null && item.qty !== 0) {
+      setStm(String(item.qty));
+    } else {
+      setStm('');
+    }
+  };
+
+  useEffect(() => {
+    if (customerMatchingWorkDetailsList.length > 0) {
+      setCustomerWorkDetailsIndex(0);
+    } else {
+      setCustomerWorkDetailsIndex(-1);
+    }
+  }, [customerMatchingWorkDetailsList]);
+
+  const currentNavHisab = (customerWorkDetailsIndex >= 0 && customerWorkDetailsIndex < customerMatchingWorkDetailsList.length)
+    ? customerMatchingWorkDetailsList[customerWorkDetailsIndex]
+    : null;
+
+  const handlePrevCustomerWorkDetails = () => {
+    if (customerMatchingWorkDetailsList.length === 0) return;
+    const currentIdx = customerWorkDetailsIndex >= 0 ? customerWorkDetailsIndex : 0;
+    const prevIdx = (currentIdx - 1 + customerMatchingWorkDetailsList.length) % customerMatchingWorkDetailsList.length;
+    setCustomerWorkDetailsIndex(prevIdx);
+  };
+
+  const handleNextCustomerWorkDetails = () => {
+    if (customerMatchingWorkDetailsList.length === 0) return;
+    const currentIdx = customerWorkDetailsIndex >= 0 ? customerWorkDetailsIndex : -1;
+    const nextIdx = (currentIdx + 1) % customerMatchingWorkDetailsList.length;
+    setCustomerWorkDetailsIndex(nextIdx);
+  };
 
   const workDetailsSuggestions = useMemo(() => {
     if (!allEntries.length) return [];
@@ -364,19 +498,8 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
     return list.filter(b => b.toLowerCase().includes(query)).slice(0, 8);
   }, [allEntries, trolleyBed]);
 
-  const handleSelectSuggestion = (item: VehicleHisab) => {
+  const handleSelectSuggestion = (item: CustomerSuggestion) => {
     if (item.name) setName(item.name);
-
-    if (item.hisabType && !isTypeFrozen) {
-      const matchedOpt = TYPE_OPTIONS.find(o => o.key === item.hisabType);
-      if (matchedOpt) {
-        setSelectedOption(matchedOpt);
-      }
-    }
-
-    if (!isWorkDetailsFrozen && item.workDetails !== undefined) {
-      setWorkDetails(item.workDetails || '');
-    }
 
     if (!isMobileFrozen && item.mobile !== undefined) {
       setMobile(item.mobile || '');
@@ -678,6 +801,7 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
               <span>কিসের কাজ লেখেন</span>
               {isWorkDetailsFrozen && <Lock size={13} className="text-slate-400" />}
             </label>
+
             <div className="relative flex items-center">
               <Briefcase size={16} className="absolute left-3 text-[#1565C0]" />
               <input
@@ -1061,7 +1185,7 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
                 </div>
                 {suggestions.map((item, idx) => (
                   <div
-                    key={item.id || idx}
+                    key={`${item.name}_${item.mobile}_${item.address}_${idx}`}
                     onMouseDown={(e) => {
                       e.preventDefault();
                       handleSelectSuggestion(item);
@@ -1073,30 +1197,23 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
                         <User size={14} className="text-[#1565C0] shrink-0" />
                         {item.name}
                       </span>
-                      <span className="text-[10px] font-semibold text-[#00796B] bg-teal-50 px-2 py-0.5 rounded-full border border-teal-200 shrink-0">
-                        {getHisabTypeLabel(item.hisabType)}
-                      </span>
                     </div>
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600 mt-1">
-                      {item.workDetails && (
-                        <span className="flex items-center gap-1 text-slate-700 font-medium">
-                          <Briefcase size={12} className="text-blue-500 shrink-0" />
-                          {item.workDetails}
-                        </span>
-                      )}
-                      {item.mobile && (
-                        <span className="flex items-center gap-1 text-slate-600">
-                          <Phone size={12} className="text-slate-400 shrink-0" />
-                          {item.mobile}
-                        </span>
-                      )}
-                      {item.address && (
-                        <span className="flex items-center gap-1 text-slate-600">
-                          <MapPin size={12} className="text-slate-400 shrink-0" />
-                          {item.address}
-                        </span>
-                      )}
-                    </div>
+                    {(item.mobile || item.address) && (
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600 mt-1">
+                        {item.mobile && (
+                          <span className="flex items-center gap-1 text-slate-600">
+                            <Phone size={12} className="text-slate-400 shrink-0" />
+                            {item.mobile}
+                          </span>
+                        )}
+                        {item.address && (
+                          <span className="flex items-center gap-1 text-slate-600">
+                            <MapPin size={12} className="text-slate-400 shrink-0" />
+                            {item.address}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1184,11 +1301,38 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
 
         {/* Card 2: Hisab Details */}
         <div className="bg-white rounded-2xl p-4 shadow-sm border border-[#B2DFDB] space-y-3.5">
-          <div className="flex items-center space-x-2.5 pb-1">
-            <div className="w-8 h-8 rounded-full bg-teal-100/70 flex items-center justify-center text-[#00796B]">
-              <FileEdit size={18} />
+          <div className="flex items-center justify-between pb-1">
+            <div className="flex items-center space-x-2.5">
+              <div className="w-8 h-8 rounded-full bg-teal-100/70 flex items-center justify-center text-[#00796B]">
+                <FileEdit size={18} />
+              </div>
+              <h2 className="text-sm font-bold text-slate-800">হিসাবের বিবরণ</h2>
             </div>
-            <h2 className="text-sm font-bold text-slate-800">হিসাবের বিবরণ</h2>
+
+            {/* Arrow navigation buttons for Customer's past work details */}
+            {customerMatchingWorkDetailsList.length > 0 && (
+              <div className="flex items-center space-x-1 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded-lg text-teal-900 shadow-2xs">
+                <span className="text-xs font-bold text-teal-900 mr-0.5">
+                  বিবরণ ({customerWorkDetailsIndex >= 0 ? toBnNum(customerWorkDetailsIndex + 1) : 0}/{toBnNum(customerMatchingWorkDetailsList.length)})
+                </span>
+                <button
+                  type="button"
+                  onClick={handlePrevCustomerWorkDetails}
+                  className="p-1 hover:bg-teal-200 active:bg-teal-300 rounded text-teal-800 transition-colors cursor-pointer"
+                  title="গ্রাহকের আগের হিসাবের বিবরণ দেখুন"
+                >
+                  <ChevronLeft size={15} />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleNextCustomerWorkDetails}
+                  className="p-1 hover:bg-teal-200 active:bg-teal-300 rounded text-teal-800 transition-colors cursor-pointer"
+                  title="গ্রাহকের পরের হিসাবের বিবরণ দেখুন"
+                >
+                  <ChevronRight size={15} />
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Date Input */}
@@ -1197,6 +1341,14 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
               <span>তারিখ (YYYY-MM-DD)</span>
               {isDateFrozen && <Lock size={13} className="text-slate-400" />}
             </label>
+
+            {/* Duplicate TextView for Date */}
+            {currentNavHisab && currentNavHisab.date && (
+              <div className="bg-teal-50/90 border border-teal-200/90 text-teal-900 text-xs font-medium px-2.5 py-1.5 rounded-xl flex items-center justify-between shadow-2xs mb-1">
+                <span>📅 রেকর্ডকৃত তারিখ: <strong>{currentNavHisab.date}</strong></span>
+              </div>
+            )}
+
             <div className="relative flex items-center">
               <button
                 type="button"
@@ -1250,6 +1402,42 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
           {/* STM / Duration / Qty input */}
           <div className="space-y-1">
             <label className="text-xs font-medium text-slate-600">{stmLabel}</label>
+
+            {/* Duplicate TextView for STM / Quantity */}
+            {currentNavHisab && (currentNavHisab.stm || currentNavHisab.qty) && (
+              <div className="bg-teal-50/90 border border-teal-200/90 text-teal-900 text-xs font-medium px-2.5 py-1.5 rounded-xl flex items-start justify-between shadow-2xs mb-1 gap-2">
+                <span className="break-words whitespace-pre-wrap flex-1 leading-snug">
+                  📋 রেকর্ডকৃত হিসাব/পরিমাণ:{' '}
+                  <strong>
+                    {currentNavHisab.stm || (currentNavHisab.qty ? `${toBnNum(currentNavHisab.qty)} ${currentNavHisab.unit || ''}` : '')}
+                  </strong>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const stmVal = currentNavHisab.stm || String(currentNavHisab.qty || '');
+                    if (navigator.clipboard) {
+                      navigator.clipboard.writeText(stmVal).catch(() => {});
+                    }
+                    setIsStmCopied(true);
+                    setTimeout(() => setIsStmCopied(false), 2000);
+                  }}
+                  className={`shrink-0 p-1.5 rounded-lg transition-colors cursor-pointer shadow-2xs border ${
+                    isStmCopied
+                      ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                      : 'bg-teal-200/90 hover:bg-teal-300 active:bg-teal-400 text-teal-950 border-teal-300'
+                  }`}
+                  title={isStmCopied ? 'কপি করা হয়েছে' : 'টেক্সট কপি করুন'}
+                >
+                  {isStmCopied ? (
+                    <Check size={15} className="text-emerald-800" />
+                  ) : (
+                    <Copy size={15} className="text-teal-950" />
+                  )}
+                </button>
+              </div>
+            )}
+
             <textarea
               id="input-main-stm"
               rows={3}

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Edit2, Trash2, AlertTriangle, Phone, MapPin, Filter } from 'lucide-react';
-import { VehicleHisab, GroupByMode, CustomerFilter } from '../types';
+import { VehicleHisab, GroupByMode, CustomerFilter, DateWorkFilter } from '../types';
 import { Utils } from '../util/utils';
 
 interface GroupChildItemRowProps {
@@ -10,6 +10,7 @@ interface GroupChildItemRowProps {
   onDelete: (id: number) => void;
   onEdit: (item: VehicleHisab) => void;
   onCustomerClick?: (filter: CustomerFilter) => void;
+  onDateClick?: (filter: DateWorkFilter) => void;
 }
 
 export const GroupChildItemRow: React.FC<GroupChildItemRowProps> = ({
@@ -18,7 +19,8 @@ export const GroupChildItemRow: React.FC<GroupChildItemRowProps> = ({
   isHighlighted,
   onDelete,
   onEdit,
-  onCustomerClick
+  onCustomerClick,
+  onDateClick
 }) => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
@@ -68,6 +70,23 @@ export const GroupChildItemRow: React.FC<GroupChildItemRowProps> = ({
             >
               <span className="break-words">👤 {item.name}</span>
               <Filter size={10} className="text-slate-400 group-hover:text-emerald-700 transition-colors shrink-0" />
+            </button>
+          ) : mode === GroupByMode.BY_USER_DETAILS && item.date ? (
+            <button
+              type="button"
+              onClick={() => onDateClick?.({
+                date: item.date,
+              })}
+              className="inline-flex items-center space-x-1 text-xs font-bold text-slate-800 hover:text-blue-800 hover:underline cursor-pointer group text-left break-words whitespace-normal"
+              title="এই তারিখ অনুযায়ী ফিল্টার করুন"
+            >
+              <span>📅 {item.date}</span>
+              <Filter size={10} className="text-slate-400 group-hover:text-blue-700 transition-colors shrink-0" />
+              {item.hisabType && (
+                <span className="text-[10px] font-bold text-teal-800 bg-gradient-to-r from-teal-50 to-emerald-100/90 px-2 py-0.5 rounded-md border border-teal-300/70 shadow-2xs ml-1">
+                  {item.hisabType}
+                </span>
+              )}
             </button>
           ) : (
             <span className="text-xs font-bold text-slate-800 break-words whitespace-normal inline-flex items-center gap-1.5">

@@ -1,23 +1,45 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { User, Calendar, Briefcase, Truck, Layers, UserCheck, Box, X } from 'lucide-react';
-import { GroupByMode } from '../types';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { User, Calendar, Briefcase, Truck, Layers, UserCheck, Box, X, SlidersHorizontal } from 'lucide-react';
+import { GroupByMode, AdvancedFilterState, initialAdvancedFilterState } from '../types';
 import { Utils } from '../util/utils';
+import { AllFiltersModal } from './AllFiltersModal';
 
 interface ViewModeFilterRowProps {
   selectedMode: GroupByMode;
   selectedWorkDetails: string;
   workDetailsOptions: string[];
+  advancedFilter?: AdvancedFilterState;
   onModeSelected: (mode: GroupByMode) => void;
   onWorkDetailsFilterChange: (workDetails: string) => void;
+  onAdvancedFilterChange?: (filter: AdvancedFilterState) => void;
+  onClearAllFilters?: () => void;
+  isFilterModalOpen?: boolean;
+  onFilterModalOpenChange?: (open: boolean) => void;
 }
 
 export const ViewModeFilterRow: React.FC<ViewModeFilterRowProps> = ({
   selectedMode,
   selectedWorkDetails,
   workDetailsOptions = [],
+  advancedFilter = initialAdvancedFilterState,
   onModeSelected,
-  onWorkDetailsFilterChange
+  onWorkDetailsFilterChange,
+  onAdvancedFilterChange,
+  onClearAllFilters,
+  isFilterModalOpen: externalIsFilterModalOpen,
+  onFilterModalOpenChange
 }) => {
+  const [internalIsFilterModalOpen, setInternalIsFilterModalOpen] = useState(false);
+  const isFilterModalOpen = externalIsFilterModalOpen !== undefined ? externalIsFilterModalOpen : internalIsFilterModalOpen;
+
+  const setFilterModalOpen = (open: boolean) => {
+    setInternalIsFilterModalOpen(open);
+    if (onFilterModalOpenChange) {
+      onFilterModalOpenChange(open);
+    }
+  };
+
   // Main Work options (1st part of workDetails: "কিসের কাজ")
   const mainWorkOptions = useMemo(() => {
     const set = new Set<string>();
@@ -39,9 +61,17 @@ export const ViewModeFilterRow: React.FC<ViewModeFilterRowProps> = ({
   const [driver, setDriver] = useState('');
   const [trolleyBed, setTrolleyBed] = useState('');
 
-  // Sync state if selectedWorkDetails is cleared externally
+  // Sync state if advancedFilter or selectedWorkDetails is updated externally
   useEffect(() => {
-    if (!selectedWorkDetails) {
+    if (advancedFilter) {
+      setMainWork(advancedFilter.mainWork === 'ALL' ? '' : (advancedFilter.mainWork || ''));
+      setYear(advancedFilter.year || '');
+      setSession(advancedFilter.session || '');
+      setManager(advancedFilter.manager || '');
+      setVehicle(advancedFilter.vehicle || '');
+      setDriver(advancedFilter.driver || '');
+      setTrolleyBed(advancedFilter.trolleyBed || '');
+    } else if (!selectedWorkDetails) {
       setMainWork('');
       setYear('');
       setSession('');
@@ -49,24 +79,29 @@ export const ViewModeFilterRow: React.FC<ViewModeFilterRowProps> = ({
       setVehicle('');
       setDriver('');
       setTrolleyBed('');
-    } else {
-      const parsed = Utils.parseWorkDetails(selectedWorkDetails);
-      if (parsed.work && !mainWork) {
-        setMainWork(parsed.work);
-      }
     }
-  }, [selectedWorkDetails]);
+  }, [advancedFilter, selectedWorkDetails]);
 
-  // Sub-filter options derived from workDetails matching selected mainWork
-  const [activeTooltip, setActiveTooltip] = useState<'customer' | 'date_work' | null>(null);
+  // Active filter count for badge indicator
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (advancedFilter.startDate || advancedFilter.endDate || (advancedFilter.datePreset && advancedFilter.datePreset !== 'all')) count++;
+    if (mainWork || (advancedFilter.mainWork && advancedFilter.mainWork !== 'ALL')) count++;
+    if (year || advancedFilter.year) count++;
+    if (session || advancedFilter.session) count++;
+    if (manager || advancedFilter.manager) count++;
+    if (vehicle || advancedFilter.vehicle) count++;
+    if (driver || advancedFilter.driver) count++;
+    if (trolleyBed || advancedFilter.trolleyBed) count++;
+    if (advancedFilter.customerName) count++;
+    if (advancedFilter.mobile) count++;
+    if (advancedFilter.address) count++;
+    if (advancedFilter.hisabType && advancedFilter.hisabType !== 'ALL') count++;
+    if (advancedFilter.paymentStatus && advancedFilter.paymentStatus !== 'all') count++;
+    if ((advancedFilter.sortBy && advancedFilter.sortBy !== 'date') || (advancedFilter.sortOrder && advancedFilter.sortOrder !== 'asc')) count++;
+    return count;
+  }, [advancedFilter, mainWork, year, session, manager, vehicle, driver, trolleyBed]);
 
-  const showTooltip = (type: 'customer' | 'date_work') => {
-    setActiveTooltip(type);
-    const timer = setTimeout(() => {
-      setActiveTooltip((prev) => (prev === type ? null : prev));
-    }, 2200);
-    return () => clearTimeout(timer);
-  };
   const subFilterOptions = useMemo(() => {
     if (!mainWork) {
       return {
@@ -89,7 +124,7 @@ export const ViewModeFilterRow: React.FC<ViewModeFilterRowProps> = ({
     (workDetailsOptions || []).forEach((work) => {
       if (!work || !work.trim()) return;
       const parsed = Utils.parseWorkDetails(work);
-      if (mainWork === 'ALL' || parsed.work === mainWork) {
+      if (!mainWork || mainWork === 'ALL' || parsed.work === mainWork) {
         if (parsed.year) yearsSet.add(parsed.year);
         if (parsed.session) sessionsSet.add(parsed.session);
         if (parsed.manager) managersSet.add(parsed.manager);
@@ -109,7 +144,6 @@ export const ViewModeFilterRow: React.FC<ViewModeFilterRowProps> = ({
     };
   }, [workDetailsOptions, mainWork]);
 
-
   // Emit updated filter string to parent
   const emitFilterChange = (
     newMainWork: string,
@@ -120,18 +154,38 @@ export const ViewModeFilterRow: React.FC<ViewModeFilterRowProps> = ({
     newDriver: string,
     newBed: string
   ) => {
-    const parts = [
-      newMainWork === 'ALL' ? '' : newMainWork,
-      newYear,
-      newSession,
-      newManager,
-      newVehicle,
-      newDriver,
-      newBed
-    ]
-      .map(s => s.trim())
-      .filter(Boolean);
-    onWorkDetailsFilterChange(parts.join(' | '));
+    const cleanMainWork = newMainWork === 'ALL' ? '' : (newMainWork || '').trim();
+    const cleanYear = (newYear || '').trim();
+    const cleanSession = (newSession || '').trim();
+    const cleanManager = (newManager || '').trim();
+    const cleanVehicle = (newVehicle || '').trim();
+    const cleanDriver = (newDriver || '').trim();
+    const cleanBed = (newBed || '').trim();
+
+    const formatted = Utils.formatWorkDetails(
+      cleanMainWork,
+      cleanYear,
+      cleanSession,
+      cleanManager,
+      cleanVehicle,
+      cleanDriver,
+      cleanBed
+    );
+
+    onWorkDetailsFilterChange(formatted);
+
+    if (onAdvancedFilterChange) {
+      onAdvancedFilterChange({
+        ...advancedFilter,
+        mainWork: newMainWork,
+        year: cleanYear,
+        session: cleanSession,
+        manager: cleanManager,
+        vehicle: cleanVehicle,
+        driver: cleanDriver,
+        trolleyBed: cleanBed
+      });
+    }
   };
 
   const handleMainWorkChange = (value: string) => {
@@ -184,12 +238,50 @@ export const ViewModeFilterRow: React.FC<ViewModeFilterRowProps> = ({
     setDriver('');
     setTrolleyBed('');
     onWorkDetailsFilterChange('');
+    if (onClearAllFilters) {
+      onClearAllFilters();
+    } else if (onAdvancedFilterChange) {
+      onAdvancedFilterChange(initialAdvancedFilterState);
+    }
+  };
+
+  const handleApplyAdvancedFilter = (newFilter: AdvancedFilterState) => {
+    const cleanMainWork = newFilter.mainWork === 'ALL' ? '' : (newFilter.mainWork || '').trim();
+    const cleanYear = (newFilter.year || '').trim();
+    const cleanSession = (newFilter.session || '').trim();
+    const cleanManager = (newFilter.manager || '').trim();
+    const cleanVehicle = (newFilter.vehicle || '').trim();
+    const cleanDriver = (newFilter.driver || '').trim();
+    const cleanBed = (newFilter.trolleyBed || '').trim();
+
+    setMainWork(cleanMainWork);
+    setYear(cleanYear);
+    setSession(cleanSession);
+    setManager(cleanManager);
+    setVehicle(cleanVehicle);
+    setDriver(cleanDriver);
+    setTrolleyBed(cleanBed);
+
+    const formatted = Utils.formatWorkDetails(
+      cleanMainWork,
+      cleanYear,
+      cleanSession,
+      cleanManager,
+      cleanVehicle,
+      cleanDriver,
+      cleanBed
+    );
+
+    onWorkDetailsFilterChange(formatted);
+    if (onAdvancedFilterChange) {
+      onAdvancedFilterChange(newFilter);
+    }
   };
 
   return (
     <div className="px-3.5 py-1 space-y-1.5 relative">
-      {/* Primary Top Filter Row */}
-      <div className="flex items-center gap-2 overflow-x-visible whitespace-nowrap">
+      {/* Primary Top Filter Row (Horizontally Scrollable) */}
+      <div className="flex items-center gap-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden whitespace-nowrap py-0.5 touch-pan-x">
         {/* 1. Main Filter Dropdown: (কিসের কাজ) */}
         <div className="relative flex items-center shrink-0 min-w-[130px] max-w-[200px]">
           <Briefcase size={13} className="absolute left-2.5 text-[#1565C0] pointer-events-none z-10" />
@@ -212,76 +304,65 @@ export const ViewModeFilterRow: React.FC<ViewModeFilterRowProps> = ({
           </select>
         </div>
 
-        {/* 2. Group By: Customer */}
-        <div className="relative shrink-0 group">
+        {/* 2. Group By Combined Toggle Button: (👤 গ্রাহক | 📅 তারিখ ও কাজ) */}
+        <div className="relative shrink-0 flex items-center bg-slate-200/80 p-0.5 rounded-full border border-slate-300/80 shadow-2xs">
           <button
-            onClick={() => {
-              onModeSelected(GroupByMode.BY_USER_DETAILS);
-              showTooltip('customer');
-            }}
-            className={`h-7 w-8 rounded-full text-sm font-medium flex items-center justify-center transition-all border ${
+            type="button"
+            onClick={() => onModeSelected(GroupByMode.BY_USER_DETAILS)}
+            className={`h-6 px-2 rounded-full text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
               selectedMode === GroupByMode.BY_USER_DETAILS
-                ? 'bg-[#1B5E20] text-white border-[#1B5E20] shadow-xs'
-                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:text-slate-800'
+                ? 'bg-[#1B5E20] text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
             }`}
-            title="গ্রাহক অনুযায়ী"
-            aria-label="গ্রাহক অনুযায়ী"
+            aria-label="গ্রাহক অনুযায়ী গ্রুপ করুন"
           >
-            <span className="text-sm leading-none select-none">👤</span>
+            <span className="text-xs leading-none select-none">👤</span>
+            <span className="text-[11px] leading-none">গ্রাহক</span>
           </button>
-          
-          {/* Tooltip on Click (Toast/Badge Style) */}
-          {activeTooltip === 'customer' && (
-            <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 z-50 px-2.5 py-1 bg-slate-900 text-white text-xs font-medium rounded-lg whitespace-nowrap shadow-xl flex items-center gap-1 border border-slate-700 pointer-events-none">
-              <span>👤 গ্রাহক অনুযায়ী</span>
-              <div className="w-2 h-2 bg-slate-900 rotate-45 -bottom-1 absolute left-1/2 -translate-x-1/2 border-r border-b border-slate-700" />
-            </div>
-          )}
-          {/* Desktop Hover Fallback */}
-          <div className="hidden group-hover:block group-focus-within:block pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 z-50 px-2.5 py-1 bg-slate-900 text-white text-xs font-medium rounded-lg whitespace-nowrap shadow-xl border border-slate-700">
-            <span>👤 গ্রাহক অনুযায়ী</span>
-            <div className="w-2 h-2 bg-slate-900 rotate-45 -bottom-1 absolute left-1/2 -translate-x-1/2 border-r border-b border-slate-700" />
-          </div>
+
+          <button
+            type="button"
+            onClick={() => onModeSelected(GroupByMode.BY_DATE_WORK)}
+            className={`h-6 px-2 rounded-full text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
+              selectedMode === GroupByMode.BY_DATE_WORK
+                ? 'bg-[#1B5E20] text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+            }`}
+            aria-label="তারিখ ও কাজ অনুযায়ী গ্রুপ করুন"
+          >
+            <span className="text-xs leading-none select-none">📅</span>
+            <span className="text-[11px] leading-none">তারিখ</span>
+          </button>
         </div>
 
-        {/* 3. Group By: Date & Work */}
+        {/* 4. All-in-One Filter Button (🎛️ ফিল্টার বাটন) - beside 👤 and 📅 */}
         <div className="relative shrink-0 group">
           <button
-            onClick={() => {
-              onModeSelected(GroupByMode.BY_DATE_WORK);
-              showTooltip('date_work');
-            }}
-            className={`h-7 w-8 rounded-full text-sm font-medium flex items-center justify-center transition-all border ${
-              selectedMode === GroupByMode.BY_DATE_WORK
-                ? 'bg-[#1B5E20] text-white border-[#1B5E20] shadow-xs'
-                : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 hover:text-slate-800'
+            type="button"
+            onClick={() => setFilterModalOpen(true)}
+            className={`h-7 px-2.5 rounded-full text-xs font-semibold flex items-center space-x-1.5 transition-all border cursor-pointer ${
+              activeFilterCount > 0
+                ? 'bg-blue-700 text-white border-blue-800 shadow-xs'
+                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-blue-700'
             }`}
-            title="তারিখ ও কাজ"
-            aria-label="তারিখ ও কাজ"
+            aria-label="সমস্ত ফিল্টার"
           >
-            <span className="text-sm leading-none select-none">📅</span>
+            <SlidersHorizontal size={13} className={activeFilterCount > 0 ? 'text-amber-300' : 'text-slate-600'} />
+            <span className="text-xs">ফিল্টার</span>
+            {activeFilterCount > 0 && (
+              <span className="bg-amber-400 text-slate-900 text-[10px] font-black min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center -mr-0.5">
+                {activeFilterCount}
+              </span>
+            )}
           </button>
-
-          {/* Tooltip on Click (Toast/Badge Style) */}
-          {activeTooltip === 'date_work' && (
-            <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 z-50 px-2.5 py-1 bg-slate-900 text-white text-xs font-medium rounded-lg whitespace-nowrap shadow-xl flex items-center gap-1 border border-slate-700 pointer-events-none">
-              <span>📅 তারিখ ও কাজ</span>
-              <div className="w-2 h-2 bg-slate-900 rotate-45 -bottom-1 absolute left-1/2 -translate-x-1/2 border-r border-b border-slate-700" />
-            </div>
-          )}
-          {/* Desktop Hover Fallback */}
-          <div className="hidden group-hover:block group-focus-within:block pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 z-50 px-2.5 py-1 bg-slate-900 text-white text-xs font-medium rounded-lg whitespace-nowrap shadow-xl border border-slate-700">
-            <span>📅 তারিখ ও কাজ</span>
-            <div className="w-2 h-2 bg-slate-900 rotate-45 -bottom-1 absolute left-1/2 -translate-x-1/2 border-r border-b border-slate-700" />
-          </div>
         </div>
 
-        {/* Clear Filter Button if any filter active */}
-        {(mainWork || year || session || manager || vehicle || driver || trolleyBed) && (
+        {/* Clear/Reset Button if any filter active */}
+        {activeFilterCount > 0 && (
           <button
+            type="button"
             onClick={handleClearAllFilters}
-            className="px-2.5 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 flex items-center space-x-1 shrink-0 transition-colors"
-            title="ফিল্টার মুছে ফেলুন"
+            className="px-2.5 py-1 rounded-full text-xs font-semibold bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 flex items-center space-x-1 shrink-0 transition-colors cursor-pointer"
           >
             <X size={12} />
             <span>রিসেট</span>
@@ -419,8 +500,16 @@ export const ViewModeFilterRow: React.FC<ViewModeFilterRowProps> = ({
           </div>
         </div>
       )}
+
+      {/* All-in-One Comprehensive Filter Modal */}
+      <AllFiltersModal
+        isOpen={isFilterModalOpen}
+        onClose={() => setFilterModalOpen(false)}
+        selectedMode={selectedMode}
+        onModeChange={onModeSelected}
+        currentFilter={advancedFilter}
+        onApplyFilter={handleApplyAdvancedFilter}
+      />
     </div>
   );
 };
-
-

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { GroupByMode, VehicleHisab, GroupedHisab, getGroupKey, DatabaseTotals, CustomerFilter } from './types';
+import { GroupByMode, VehicleHisab, GroupedHisab, getGroupKey, DatabaseTotals, CustomerFilter, AdvancedFilterState, initialAdvancedFilterState, DateWorkFilter } from './types';
 import { HisabStorage } from './data/storage';
 import { HisabListScreen } from './screens/HisabListScreen';
 import { AddHisabScreen } from './screens/AddHisabScreen';
@@ -21,9 +21,11 @@ export const App: React.FC = () => {
     GroupByMode.BY_USER_DETAILS
   );
   const [selectedWorkDetails, setSelectedWorkDetails] = useState<string>('');
+  const [advancedFilter, setAdvancedFilter] = useState<AdvancedFilterState>(initialAdvancedFilterState);
   const [workDetailsOptions, setWorkDetailsOptions] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [customerFilter, setCustomerFilter] = useState<CustomerFilter | null>(null);
+  const [dateFilter, setDateFilter] = useState<DateWorkFilter | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
   const [groupedList, setGroupedList] = useState<GroupedHisab[]>([]);
@@ -64,14 +66,21 @@ export const App: React.FC = () => {
         null,
         selectedGroupByMode,
         selectedWorkDetails,
-        customerFilter
+        customerFilter,
+        advancedFilter,
+        dateFilter
       );
       setGroupedList(groups);
       setDbTotals(totals);
+
+      if ((dateFilter || customerFilter) && groups.length > 0) {
+        const key = getGroupKey(groups[0], selectedGroupByMode);
+        setExpandedGroups(new Set([key]));
+      }
     } catch (err) {
       console.error('Error fetching data from IndexedDB:', err);
     }
-  }, [searchQuery, selectedGroupByMode, selectedWorkDetails, customerFilter]);
+  }, [searchQuery, selectedGroupByMode, selectedWorkDetails, customerFilter, advancedFilter, dateFilter]);
 
   useEffect(() => {
     refreshData();
@@ -98,6 +107,13 @@ export const App: React.FC = () => {
     setExpandedGroups(new Set());
   };
 
+  const handleClearAllFilters = () => {
+    setAdvancedFilter(initialAdvancedFilterState);
+    setSelectedWorkDetails('');
+    setCustomerFilter(null);
+    setDateFilter(null);
+  };
+
   const handleCustomerClick = (filter: CustomerFilter) => {
     setCustomerFilter((prev) => {
       if (
@@ -115,6 +131,20 @@ export const App: React.FC = () => {
 
   const handleClearCustomerFilter = () => {
     setCustomerFilter(null);
+  };
+
+  const handleDateClick = (filter: DateWorkFilter) => {
+    setDateFilter((prev) => {
+      if (prev && (prev.date || '').trim() === (filter.date || '').trim()) {
+        return null; // Toggle off if clicked again
+      }
+      return { date: filter.date };
+    });
+    setSelectedGroupByMode(GroupByMode.BY_DATE_WORK);
+  };
+
+  const handleClearDateFilter = () => {
+    setDateFilter(null);
   };
 
   const handleAddNewClick = () => {
@@ -164,7 +194,9 @@ export const App: React.FC = () => {
         null,
         selectedGroupByMode,
         selectedWorkDetails,
-        customerFilter
+        customerFilter,
+        advancedFilter,
+        dateFilter
       )
     ]);
     
@@ -174,7 +206,9 @@ export const App: React.FC = () => {
 
     const targetGroup = list.find(g =>
       (savedId && g.items.some(i => i.id === savedId)) ||
-      (g.name === entry.name && g.hisabType === entry.hisabType && g.workDetails === entry.workDetails && (selectedGroupByMode !== GroupByMode.BY_DATE_WORK || g.date === entry.date))
+      (selectedGroupByMode === GroupByMode.BY_DATE_WORK
+        ? g.date === entry.date
+        : (g.name === entry.name && g.hisabType === entry.hisabType && g.workDetails === entry.workDetails))
     );
 
     if (targetGroup) {
@@ -207,16 +241,22 @@ export const App: React.FC = () => {
           selectedGroupByMode={selectedGroupByMode}
           selectedWorkDetails={selectedWorkDetails}
           workDetailsOptions={workDetailsOptions}
+          advancedFilter={advancedFilter}
           expandedGroups={expandedGroups}
           highlightedGroupKey={highlightedGroupKey}
           highlightedItemId={highlightedItemId}
           customerFilter={customerFilter}
+          dateFilter={dateFilter}
           searchQuery={searchQuery}
           onSearchQueryChange={setSearchQuery}
           onGroupByModeSelected={handleModeSelected}
           onWorkDetailsFilterChange={setSelectedWorkDetails}
+          onAdvancedFilterChange={setAdvancedFilter}
+          onClearAllFilters={handleClearAllFilters}
           onCustomerClick={handleCustomerClick}
           onClearCustomerFilter={handleClearCustomerFilter}
+          onDateClick={handleDateClick}
+          onClearDateFilter={handleClearDateFilter}
           onToggleGroup={handleToggleGroup}
           onAddNewClick={handleAddNewClick}
           onEditClick={handleEditClick}

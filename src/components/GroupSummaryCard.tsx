@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Plus, ChevronDown, ChevronUp, Phone, MapPin, FileText, Pencil, Filter } from 'lucide-react';
-import { GroupedHisab, GroupByMode, VehicleHisab, CustomerFilter } from '../types';
+import { GroupedHisab, GroupByMode, VehicleHisab, CustomerFilter, DateWorkFilter, AdvancedFilterState } from '../types';
 import { GroupChildItemRow } from './GroupChildItemRow';
 import { Utils } from '../util/utils';
 import { SingleGroupPdfPreviewModal } from './SingleGroupPdfPreviewModal';
@@ -13,11 +13,15 @@ interface GroupSummaryCardProps {
   isHighlighted?: boolean;
   highlightedItemId?: number | null;
   activeCustomerFilter?: CustomerFilter | null;
+  activeDateFilter?: DateWorkFilter | null;
+  selectedWorkDetails?: string;
+  advancedFilter?: AdvancedFilterState | null;
   onExpandToggle: () => void;
   onDeleteHisab: (id: number) => void;
   onEditClick: (item: VehicleHisab) => void;
   onCopyClick: (grouped: GroupedHisab) => void;
   onCustomerClick?: (filter: CustomerFilter) => void;
+  onDateClick?: (filter: DateWorkFilter) => void;
   onReloadData?: () => void;
 }
 
@@ -28,15 +32,29 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
   isHighlighted,
   highlightedItemId,
   activeCustomerFilter,
+  activeDateFilter,
+  selectedWorkDetails,
+  advancedFilter,
   onExpandToggle,
   onDeleteHisab,
   onEditClick,
   onCopyClick,
   onCustomerClick,
+  onDateClick,
   onReloadData
 }) => {
   const [showPdfPreview, setShowPdfPreview] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+
+  const selectedMainWork = (
+    (advancedFilter?.mainWork && advancedFilter.mainWork.trim() && advancedFilter.mainWork !== 'ALL')
+      ? advancedFilter.mainWork.trim()
+      : ((selectedWorkDetails || '').trim() ? Utils.parseWorkDetails(selectedWorkDetails || '').work.trim() : '')
+  );
+  const hasWorkFilter = Boolean(selectedMainWork);
+  const isCustomerGroupWithoutWorkFilter = mode === GroupByMode.BY_USER_DETAILS && !hasWorkFilter;
+  const isDateGroupWithoutWorkFilter = mode === GroupByMode.BY_DATE_WORK && !hasWorkFilter;
+  const hideWorkAndQtyBadges = isCustomerGroupWithoutWorkFilter || isDateGroupWithoutWorkFilter;
 
   const isDue = groupedHisab.totalDue > 0;
   const borderColor = isDue ? 'border-[#EF5350]' : 'border-[#66BB6A]';
@@ -47,8 +65,14 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
     activeCustomerFilter &&
     (activeCustomerFilter.name || '').trim().toLowerCase() === (groupedHisab.name || '').trim().toLowerCase() &&
     (activeCustomerFilter.mobile || '').trim() === (groupedHisab.mobile || '').trim() &&
-    (activeCustomerFilter.address || '').trim().toLowerCase() === (groupedHisab.address || '').trim().toLowerCase() &&
-    (activeCustomerFilter.hisabType || '').trim().toLowerCase() === (groupedHisab.hisabType || '').trim().toLowerCase()
+    (activeCustomerFilter.address || '').trim().toLowerCase() === (groupedHisab.address || '').trim().toLowerCase()
+  );
+
+  const isDateFilterActive = Boolean(
+    activeDateFilter &&
+    (activeDateFilter.date || '').trim() === (groupedHisab.date || '').trim() &&
+    (activeDateFilter.hisabType === undefined || (activeDateFilter.hisabType || '').trim().toLowerCase() === (groupedHisab.hisabType || '').trim().toLowerCase()) &&
+    (activeDateFilter.workDetails === undefined || (activeDateFilter.workDetails || '').trim().toLowerCase() === (groupedHisab.workDetails || '').trim().toLowerCase())
   );
 
   const type = groupedHisab.hisabType.toLowerCase();
@@ -87,6 +111,8 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
           shouldHighlightParent ? 'animate-blur-float ring-4 ring-blue-400 bg-blue-50/70' : ''
         } ${
           isCustomerFilterActive ? 'ring-3 ring-emerald-600 shadow-lg' : ''
+        } ${
+          isDateFilterActive ? 'ring-3 ring-blue-600 shadow-lg' : ''
         }`}
       >
         <div
@@ -121,6 +147,32 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
                       isCustomerFilterActive
                         ? 'text-white opacity-100'
                         : 'text-slate-400 opacity-60 group-hover:opacity-100 group-hover:text-emerald-700'
+                    }`}
+                  />
+                </button>
+              ) : mode === GroupByMode.BY_DATE_WORK && groupedHisab.date.trim() ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDateClick?.({
+                      date: groupedHisab.date,
+                    });
+                  }}
+                  className={`inline-flex items-center space-x-1.5 px-2 py-0.5 -ml-1 rounded-lg text-base font-bold text-left transition-all duration-150 group cursor-pointer ${
+                    isDateFilterActive
+                      ? 'bg-blue-700 text-white shadow-xs'
+                      : 'text-[#0D1B2A] hover:text-blue-800 hover:bg-blue-100/70 active:scale-98'
+                  }`}
+                  title="এই তারিখ, কাজ ও ডিটেইলস অনুযায়ী ফিল্টার করতে ক্লিক করুন"
+                >
+                  <span className="leading-snug break-words whitespace-normal">📅 {groupedHisab.date}</span>
+                  <Filter
+                    size={13}
+                    className={`shrink-0 transition-opacity ${
+                      isDateFilterActive
+                        ? 'text-white opacity-100'
+                        : 'text-slate-400 opacity-60 group-hover:opacity-100 group-hover:text-blue-700'
                     }`}
                   />
                 </button>
@@ -191,7 +243,7 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
 
           <div className="flex items-start justify-between mt-1.5 pt-1.5 border-t border-slate-100 text-xs gap-2">
             <div className="min-w-0 flex-1 space-y-1">
-              {groupedHisab.workDetails ? (
+              {!hideWorkAndQtyBadges && groupedHisab.workDetails ? (
                 <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
                   <span className="bg-[#E3F2FD] text-[#1565C0] text-[11px] font-semibold px-2 py-1 rounded-md break-words whitespace-normal inline-block max-w-full leading-relaxed border border-blue-100">
                     {groupedHisab.workDetails}
@@ -206,9 +258,11 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
               </div>
             </div>
 
-            <div className="bg-amber-50 text-amber-900 border border-amber-200/80 px-2 py-0.5 rounded-md text-[11px] sm:text-xs font-bold shrink-0 text-right shadow-2xs whitespace-normal break-words">
-              {qtyText}
-            </div>
+            {!hideWorkAndQtyBadges && (
+              <div className="bg-amber-50 text-amber-900 border border-amber-200/80 px-2 py-0.5 rounded-md text-[11px] sm:text-xs font-bold shrink-0 text-right shadow-2xs whitespace-normal break-words">
+                {qtyText}
+              </div>
+            )}
           </div>
 
           <div className="my-2 border-t border-[#CFD8DC]"></div>
@@ -250,6 +304,7 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
                 onDelete={onDeleteHisab}
                 onEdit={onEditClick}
                 onCustomerClick={onCustomerClick}
+                onDateClick={onDateClick}
               />
             ))}
           </div>

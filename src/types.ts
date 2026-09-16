@@ -74,6 +74,55 @@ export interface CustomerFilter {
   hisabType: string;
 }
 
+export interface DateWorkFilter {
+  date: string;
+  hisabType?: string;
+  workDetails?: string;
+}
+
+export type SortByField = 'id' | 'date' | 'qty' | 'bill' | 'paid' | 'due';
+export type SortOrder = 'asc' | 'desc';
+
+export interface AdvancedFilterState {
+  startDate: string;
+  endDate: string;
+  datePreset: string; // 'all' | 'today' | 'yesterday' | '7days' | 'this_month' | 'last_month' | 'this_year' | 'custom'
+  mainWork: string;
+  year: string;
+  session: string;
+  manager: string;
+  vehicle: string;
+  driver: string;
+  trolleyBed: string;
+  customerName: string;
+  mobile: string;
+  address: string;
+  hisabType: string;
+  paymentStatus: 'all' | 'due_only' | 'paid_only' | 'has_payment';
+  sortBy: SortByField;
+  sortOrder: SortOrder;
+}
+
+export const initialAdvancedFilterState: AdvancedFilterState = {
+  startDate: '',
+  endDate: '',
+  datePreset: 'all',
+  mainWork: '',
+  year: '',
+  session: '',
+  manager: '',
+  vehicle: '',
+  driver: '',
+  trolleyBed: '',
+  customerName: '',
+  mobile: '',
+  address: '',
+  hisabType: '',
+  paymentStatus: 'all',
+  sortBy: 'date',
+  sortOrder: 'asc'
+};
+
 export interface HisabQueryResult {
   groups: GroupedHisab[];
   totals: DatabaseTotals;

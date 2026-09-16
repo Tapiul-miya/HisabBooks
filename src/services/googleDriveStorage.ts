@@ -147,19 +147,55 @@ export const uploadBackupToDrive = async (
  * Lists all HisabBook backups from Google Drive
  */
 export const listDriveBackups = async (token: string): Promise<DriveBackupFile[]> => {
-  const query = encodeURIComponent("name contains 'HisabBook_Backup' and trashed = false");
-  const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,mimeType,size,createdTime,modifiedTime,description)&orderBy=createdTime desc&pageSize=40`;
+  let folderId: string | null = null;
+  try {
+    const queryFolder = encodeURIComponent(
+      `name = '${BACKUP_FOLDER_NAME}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`
+    );
+    const searchUrl = `https://www.googleapis.com/drive/v3/files?q=${queryFolder}&fields=files(id,name)&spaces=drive`;
+    const searchRes = await fetch(searchUrl, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (searchRes.ok) {
+      const searchData = await searchRes.json();
+      if (searchData.files && searchData.files.length > 0) {
+        folderId = searchData.files[0].id;
+      }
+    }
+  } catch (e) {
+    console.warn('Folder search info:', e);
+  }
+
+  const queryCondition = folderId
+    ? `trashed = false and (name contains 'HisabBook' or '${folderId}' in parents)`
+    : "trashed = false and name contains 'HisabBook'";
+
+  const query = encodeURIComponent(queryCondition);
+  const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,mimeType,size,createdTime,modifiedTime,description)&orderBy=createdTime desc&pageSize=50`;
 
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` }
   });
 
   if (!res.ok) {
-    throw new Error(`ক্লাউড ব্যাকআপ তালিকা আনতে ব্যর্থ: ${res.statusText}`);
+    const errText = await res.text().catch(() => '');
+    throw new Error(`ক্লাউড ব্যাকআপ তালিকা আনতে ব্যর্থ (${res.status}): ${res.statusText} ${errText}`);
   }
 
   const data = await res.json();
-  return (data.files || []) as DriveBackupFile[];
+  const rawFiles: DriveBackupFile[] = (data.files || []) as DriveBackupFile[];
+
+  // Deduplicate files by id
+  const seen = new Set<string>();
+  const files: DriveBackupFile[] = [];
+  for (const f of rawFiles) {
+    if (!seen.has(f.id)) {
+      seen.add(f.id);
+      files.push(f);
+    }
+  }
+
+  return files;
 };
 
 /**

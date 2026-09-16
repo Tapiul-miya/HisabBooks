@@ -1,6 +1,6 @@
 import initSqlJs, { Database, SqlJsStatic } from 'sql.js';
 import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
-import { VehicleHisab, GroupByMode, GroupedHisab, DatabaseTotals, HisabQueryResult, CustomerFilter } from '../types';
+import { VehicleHisab, GroupByMode, GroupedHisab, DatabaseTotals, HisabQueryResult, CustomerFilter, AdvancedFilterState, DateWorkFilter } from '../types';
 import { Utils } from '../util/utils';
 
 const DB_STORE_NAME = 'sqlite_db_store';
@@ -117,6 +117,33 @@ let cachedDbBinary: Uint8Array | null = null;
 let idbInstance: IDBDatabase | null = null;
 let idbOpenPromise: Promise<IDBDatabase | null> | null = null;
 
+// Global safety suppression for closing IndexedDB connections during tab sleep/unload
+if (typeof window !== 'undefined') {
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason = String(event?.reason || '');
+    if (
+      reason.includes('Database is closing') ||
+      reason.includes('closing/hidden') ||
+      reason.includes('InvalidStateError') ||
+      reason.includes('database connection is closing')
+    ) {
+      if (typeof event.preventDefault === 'function') event.preventDefault();
+    }
+  });
+
+  window.addEventListener('error', (event) => {
+    const msg = String(event?.message || '');
+    if (
+      msg.includes('Database is closing') ||
+      msg.includes('closing/hidden') ||
+      msg.includes('InvalidStateError') ||
+      msg.includes('database connection is closing')
+    ) {
+      if (typeof event.preventDefault === 'function') event.preventDefault();
+    }
+  });
+}
+
 // Safe IDB Connection Manager
 async function getIDBConnection(forceNew: boolean = false): Promise<IDBDatabase | null> {
   if (typeof window === 'undefined' || typeof indexedDB === 'undefined') {
@@ -127,7 +154,7 @@ async function getIDBConnection(forceNew: boolean = false): Promise<IDBDatabase 
     try {
       // Test if transaction is executable on current connection without closing error
       const testTx = idbInstance.transaction(DB_STORE_NAME, 'readonly');
-      testTx.abort();
+      try { testTx.abort(); } catch {}
       return idbInstance;
     } catch {
       idbInstance = null;
@@ -160,19 +187,28 @@ async function getIDBConnection(forceNew: boolean = false): Promise<IDBDatabase 
           try { db.close(); } catch {}
           idbInstance = null;
         };
-        db.onerror = () => {
+        db.onerror = (e) => {
+          if (e && typeof (e as Event).preventDefault === 'function') {
+            (e as Event).preventDefault();
+          }
           idbInstance = null;
         };
         idbOpenPromise = null;
         resolve(db);
       };
 
-      request.onerror = () => {
+      request.onerror = (e) => {
+        if (e && typeof (e as Event).preventDefault === 'function') {
+          (e as Event).preventDefault();
+        }
         idbOpenPromise = null;
         resolve(null);
       };
 
-      request.onblocked = () => {
+      request.onblocked = (e) => {
+        if (e && typeof (e as Event).preventDefault === 'function') {
+          (e as Event).preventDefault();
+        }
         idbOpenPromise = null;
         resolve(null);
       };
@@ -204,19 +240,22 @@ async function getStoredDbBinary(): Promise<Uint8Array | null> {
             getReq.onsuccess = () => {
               resolve(getReq.result || null);
             };
-            getReq.onerror = () => {
+            getReq.onerror = (e) => {
+              if (e && typeof (e as Event).preventDefault === 'function') (e as Event).preventDefault();
               idbInstance = null;
               resolve(null);
             };
-            tx.onabort = () => {
+            tx.onabort = (e) => {
+              if (e && typeof (e as Event).preventDefault === 'function') (e as Event).preventDefault();
               idbInstance = null;
               resolve(null);
             };
-            tx.onerror = () => {
+            tx.onerror = (e) => {
+              if (e && typeof (e as Event).preventDefault === 'function') (e as Event).preventDefault();
               idbInstance = null;
               resolve(null);
             };
-          } catch (txErr) {
+          } catch {
             idbInstance = null;
             resolve(null);
           }
@@ -227,9 +266,8 @@ async function getStoredDbBinary(): Promise<Uint8Array | null> {
           return idbData;
         }
       }
-    } catch (e) {
+    } catch {
       idbInstance = null;
-      console.warn('IDB read warning, checking fallback:', e);
     }
   }
 
@@ -260,32 +298,42 @@ async function saveDbBinary(data: Uint8Array): Promise<void> {
 
   // Queue writes sequentially to prevent transaction conflicts and closing states
   saveQueue = saveQueue.then(async () => {
-    try {
-      const db = await getIDBConnection();
-      if (db) {
-        await new Promise<void>((resolve) => {
-          try {
-            const tx = db.transaction(DB_STORE_NAME, 'readwrite');
-            const store = tx.objectStore(DB_STORE_NAME);
-            store.put(data, DB_FILE_KEY);
-            tx.oncomplete = () => resolve();
-            tx.onerror = () => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const db = await getIDBConnection(attempt > 0);
+        if (db) {
+          const success = await new Promise<boolean>((resolve) => {
+            try {
+              const tx = db.transaction(DB_STORE_NAME, 'readwrite');
+              const store = tx.objectStore(DB_STORE_NAME);
+              const putReq = store.put(data, DB_FILE_KEY);
+              putReq.onerror = (e) => {
+                if (e && typeof (e as Event).preventDefault === 'function') (e as Event).preventDefault();
+                idbInstance = null;
+                resolve(false);
+              };
+              tx.oncomplete = () => resolve(true);
+              tx.onerror = (e) => {
+                if (e && typeof (e as Event).preventDefault === 'function') (e as Event).preventDefault();
+                idbInstance = null;
+                resolve(false);
+              };
+              tx.onabort = (e) => {
+                if (e && typeof (e as Event).preventDefault === 'function') (e as Event).preventDefault();
+                idbInstance = null;
+                resolve(false);
+              };
+            } catch {
               idbInstance = null;
-              resolve();
-            };
-            tx.onabort = () => {
-              idbInstance = null;
-              resolve();
-            };
-          } catch {
-            idbInstance = null;
-            resolve();
-          }
-        });
+              resolve(false);
+            }
+          });
+
+          if (success) break;
+        }
+      } catch {
+        idbInstance = null;
       }
-    } catch (err) {
-      idbInstance = null;
-      console.warn('IndexedDB write warning:', err);
     }
 
     // Also persist a fallback copy to LocalStorage (if under 4MB)
@@ -449,6 +497,10 @@ async function getSqliteDb(): Promise<Database> {
         CREATE INDEX IF NOT EXISTS idx_hisab_user ON hisab(name, hisabType, address, mobile, workDetails);
         CREATE INDEX IF NOT EXISTS idx_hisab_date ON hisab(date, hisabType, workDetails);
         CREATE INDEX IF NOT EXISTS idx_hisab_due ON hisab(due);
+        CREATE INDEX IF NOT EXISTS idx_hisab_name ON hisab(name);
+        CREATE INDEX IF NOT EXISTS idx_hisab_mobile ON hisab(mobile);
+        CREATE INDEX IF NOT EXISTS idx_hisab_address ON hisab(address);
+        CREATE INDEX IF NOT EXISTS idx_hisab_work ON hisab(workDetails);
       `);
 
       // Migration: ensure all new columns exist for existing databases
@@ -634,17 +686,26 @@ export class HisabStorage {
       ]);
       stmt.free();
     } else {
+      const conditions: string[] = [`COALESCE(date, "") = ?`];
+      const params: (string | number)[] = [oldGroup.date || ''];
+      if (oldGroup.hisabType && oldGroup.hisabType.trim()) {
+        conditions.push(`COALESCE(hisabType, "") = ?`);
+        params.push(oldGroup.hisabType.trim());
+      }
+      if (oldGroup.workDetails && oldGroup.workDetails.trim()) {
+        conditions.push(`COALESCE(workDetails, "") = ?`);
+        params.push(oldGroup.workDetails.trim());
+      }
+
       const stmt = db.prepare(`
         UPDATE hisab
         SET date = ?, workDetails = ?
-        WHERE COALESCE(date, "") = ? AND COALESCE(hisabType, "") = ? AND COALESCE(workDetails, "") = ?
+        WHERE ${conditions.join(' AND ')}
       `);
       stmt.run([
         newGroup.date !== undefined ? newGroup.date : (oldGroup.date || ''),
-        newGroup.workDetails || '',
-        oldGroup.date || '',
-        oldGroup.hisabType || '',
-        oldGroup.workDetails || ''
+        newGroup.workDetails !== undefined ? newGroup.workDetails : (oldGroup.workDetails || ''),
+        ...params
       ]);
       stmt.free();
     }
@@ -764,14 +825,22 @@ export class HisabStorage {
     searchColumn: string | null = null,
     groupByMode: GroupByMode = GroupByMode.BY_USER_DETAILS,
     workDetailsFilter: string = '',
-    customerFilter: CustomerFilter | null = null
+    customerFilter: CustomerFilter | null = null,
+    advancedFilter?: AdvancedFilterState | null,
+    dateFilter: DateWorkFilter | string | null = null
   ): Promise<HisabQueryResult> {
     const db = await getSqliteDb();
     const trimmed = query.trim();
     const trimmedWork = workDetailsFilter.trim();
     const isUserDetails = groupByMode === GroupByMode.BY_USER_DETAILS;
+    const selectedMainWork = (
+      (advancedFilter?.mainWork && advancedFilter.mainWork.trim() && advancedFilter.mainWork !== 'ALL')
+        ? advancedFilter.mainWork.trim()
+        : (trimmedWork ? Utils.parseWorkDetails(trimmedWork).work.trim() : '')
+    );
+    const hasWorkFilter = Boolean(selectedMainWork);
 
-    // 1. Where clause for search & workDetails filter & customer filter
+    // 1. Where clause for search & workDetails filter & customer filter & advancedFilter & dateFilter
     const conditions: string[] = [];
     const params: (string | number)[] = [];
 
@@ -782,8 +851,37 @@ export class HisabStorage {
       params.push(customerFilter.mobile || '');
       conditions.push(`COALESCE(address, '') = ?`);
       params.push(customerFilter.address || '');
-      conditions.push(`COALESCE(hisabType, '') = ?`);
-      params.push(customerFilter.hisabType || '');
+      if (hasWorkFilter && customerFilter.hisabType) {
+        conditions.push(`COALESCE(hisabType, '') = ?`);
+        params.push(customerFilter.hisabType || '');
+      }
+    }
+
+    if (dateFilter) {
+      if (typeof dateFilter === 'string') {
+        if (dateFilter.trim()) {
+          conditions.push(`COALESCE(date, '') = ?`);
+          params.push(dateFilter.trim());
+        }
+      } else if (dateFilter.date && dateFilter.date.trim()) {
+        conditions.push(`COALESCE(date, '') = ?`);
+        params.push(dateFilter.date.trim());
+
+        if (dateFilter.hisabType !== undefined && dateFilter.hisabType.trim()) {
+          conditions.push(`COALESCE(hisabType, '') = ?`);
+          params.push(dateFilter.hisabType.trim());
+        }
+
+        if (dateFilter.workDetails !== undefined && dateFilter.workDetails.trim()) {
+          if (dateFilter.workDetails.includes('|')) {
+            conditions.push(`COALESCE(workDetails, '') = ?`);
+            params.push(dateFilter.workDetails.trim());
+          } else {
+            conditions.push(`COALESCE(workDetails, '') LIKE ?`);
+            params.push(`%${dateFilter.workDetails.trim()}%`);
+          }
+        }
+      }
     }
 
     if (trimmed.length > 0) {
@@ -797,7 +895,48 @@ export class HisabStorage {
       }
     }
 
-    if (trimmedWork.length > 0) {
+    const hasAdvancedWorkFilter = Boolean(
+      advancedFilter && (
+        (advancedFilter.mainWork && advancedFilter.mainWork !== 'ALL' && advancedFilter.mainWork.trim()) ||
+        (advancedFilter.year && advancedFilter.year.trim()) ||
+        (advancedFilter.session && advancedFilter.session.trim()) ||
+        (advancedFilter.manager && advancedFilter.manager.trim()) ||
+        (advancedFilter.vehicle && advancedFilter.vehicle.trim()) ||
+        (advancedFilter.driver && advancedFilter.driver.trim()) ||
+        (advancedFilter.trolleyBed && advancedFilter.trolleyBed.trim())
+      )
+    );
+
+    if (hasAdvancedWorkFilter && advancedFilter) {
+      if (advancedFilter.mainWork && advancedFilter.mainWork !== 'ALL' && advancedFilter.mainWork.trim()) {
+        conditions.push(`workDetails LIKE ?`);
+        params.push(`%${advancedFilter.mainWork.trim()}%`);
+      }
+      if (advancedFilter.year && advancedFilter.year.trim()) {
+        conditions.push(`workDetails LIKE ?`);
+        params.push(`%${advancedFilter.year.trim()}%`);
+      }
+      if (advancedFilter.session && advancedFilter.session.trim()) {
+        conditions.push(`workDetails LIKE ?`);
+        params.push(`%${advancedFilter.session.trim()}%`);
+      }
+      if (advancedFilter.manager && advancedFilter.manager.trim()) {
+        conditions.push(`workDetails LIKE ?`);
+        params.push(`%${advancedFilter.manager.trim()}%`);
+      }
+      if (advancedFilter.vehicle && advancedFilter.vehicle.trim()) {
+        conditions.push(`workDetails LIKE ?`);
+        params.push(`%${advancedFilter.vehicle.trim()}%`);
+      }
+      if (advancedFilter.driver && advancedFilter.driver.trim()) {
+        conditions.push(`workDetails LIKE ?`);
+        params.push(`%${advancedFilter.driver.trim()}%`);
+      }
+      if (advancedFilter.trolleyBed && advancedFilter.trolleyBed.trim()) {
+        conditions.push(`workDetails LIKE ?`);
+        params.push(`%${advancedFilter.trolleyBed.trim()}%`);
+      }
+    } else if (trimmedWork.length > 0) {
       const parts = trimmedWork.split('|').map(s => s.trim()).filter(Boolean);
       if (parts.length > 0) {
         for (const part of parts) {
@@ -807,6 +946,41 @@ export class HisabStorage {
       } else {
         conditions.push(`workDetails = ?`);
         params.push(trimmedWork);
+      }
+    }
+
+    // Advanced Filter conditions
+    if (advancedFilter) {
+      if (advancedFilter.startDate && advancedFilter.startDate.trim()) {
+        conditions.push(`date >= ?`);
+        params.push(advancedFilter.startDate.trim());
+      }
+      if (advancedFilter.endDate && advancedFilter.endDate.trim()) {
+        conditions.push(`date <= ?`);
+        params.push(advancedFilter.endDate.trim());
+      }
+      if (advancedFilter.hisabType && advancedFilter.hisabType.trim() && advancedFilter.hisabType !== 'ALL') {
+        conditions.push(`hisabType = ?`);
+        params.push(advancedFilter.hisabType.trim());
+      }
+      if (advancedFilter.customerName && advancedFilter.customerName.trim()) {
+        conditions.push(`name LIKE ?`);
+        params.push(`%${advancedFilter.customerName.trim()}%`);
+      }
+      if (advancedFilter.mobile && advancedFilter.mobile.trim()) {
+        conditions.push(`mobile LIKE ?`);
+        params.push(`%${advancedFilter.mobile.trim()}%`);
+      }
+      if (advancedFilter.address && advancedFilter.address.trim()) {
+        conditions.push(`address LIKE ?`);
+        params.push(`%${advancedFilter.address.trim()}%`);
+      }
+      if (advancedFilter.paymentStatus === 'due_only') {
+        conditions.push(`due > 0`);
+      } else if (advancedFilter.paymentStatus === 'paid_only') {
+        conditions.push(`due <= 0`);
+      } else if (advancedFilter.paymentStatus === 'has_payment') {
+        conditions.push(`paid > 0`);
       }
     }
 
@@ -875,12 +1049,106 @@ export class HisabStorage {
       return { groups: [], totals };
     }
 
-    // 3. Pure SQL: GROUP BY Query with SUM Aggregates & COUNT (Date ASC)
+    // 3. Pure SQL: GROUP BY Query with SUM Aggregates & COUNT (Dynamic Sort)
+    const sortBy = advancedFilter?.sortBy || 'date';
+    const sortOrder = (advancedFilter?.sortOrder || 'asc').toUpperCase();
+
+    let groupOrderBy = '';
+    if (isUserDetails) {
+      if (sortBy === 'id') {
+        groupOrderBy = sortOrder === 'ASC' ? 'MIN(id) ASC' : 'MAX(id) DESC';
+      } else if (sortBy === 'date') {
+        groupOrderBy = sortOrder === 'ASC' ? 'MIN(date) ASC, MIN(id) ASC' : 'MAX(date) DESC, MAX(id) DESC';
+      } else if (sortBy === 'qty') {
+        groupOrderBy = `totalQty ${sortOrder}, MIN(date) ASC`;
+      } else if (sortBy === 'bill') {
+        groupOrderBy = `totalBill ${sortOrder}, MIN(date) ASC`;
+      } else if (sortBy === 'paid') {
+        groupOrderBy = `totalPaid ${sortOrder}, MIN(date) ASC`;
+      } else if (sortBy === 'due') {
+        groupOrderBy = `totalDue ${sortOrder}, MIN(date) ASC`;
+      } else {
+        groupOrderBy = 'MIN(date) ASC, MIN(id) ASC';
+      }
+    } else {
+      if (sortBy === 'id') {
+        groupOrderBy = sortOrder === 'ASC' ? 'MIN(id) ASC' : 'MAX(id) DESC';
+      } else if (sortBy === 'date') {
+        groupOrderBy = `date ${sortOrder}, MIN(id) ${sortOrder}`;
+      } else if (sortBy === 'qty') {
+        groupOrderBy = `totalQty ${sortOrder}, date ASC`;
+      } else if (sortBy === 'bill') {
+        groupOrderBy = `totalBill ${sortOrder}, date ASC`;
+      } else if (sortBy === 'paid') {
+        groupOrderBy = `totalPaid ${sortOrder}, date ASC`;
+      } else if (sortBy === 'due') {
+        groupOrderBy = `totalDue ${sortOrder}, date ASC`;
+      } else {
+        groupOrderBy = 'date ASC, MIN(id) ASC';
+      }
+    }
+
     let groupSql = '';
     if (isUserDetails) {
+      if (hasWorkFilter) {
+        groupSql = `
+          SELECT 
+            name, hisabType, address, mobile, workDetails,
+            COALESCE(SUM(bill), 0) AS totalBill,
+            COALESCE(SUM(paid), 0) AS totalPaid,
+            COALESCE(SUM(due), 0) AS totalDue,
+            COALESCE(SUM(qty), 0) AS totalQty,
+            COUNT(id) AS itemCount,
+            MIN(date) AS minDate,
+            MAX(date) AS maxDate,
+            COUNT(DISTINCT date) AS dateCount,
+            MIN(date) AS earliestDate,
+            MIN(id) AS earliestId,
+            MAX(id) AS maxId
+          FROM hisab
+          ${whereClause}
+          GROUP BY name, hisabType, address, mobile, workDetails
+          ORDER BY ${groupOrderBy};
+        `;
+      } else {
+        groupSql = `
+          SELECT 
+            name, address, mobile,
+            CASE WHEN COUNT(DISTINCT hisabType) = 1 THEN MIN(hisabType) ELSE '' END AS hisabType,
+            CASE WHEN COUNT(DISTINCT workDetails) = 1 THEN MIN(workDetails) ELSE '' END AS workDetails,
+            COALESCE(SUM(bill), 0) AS totalBill,
+            COALESCE(SUM(paid), 0) AS totalPaid,
+            COALESCE(SUM(due), 0) AS totalDue,
+            COALESCE(SUM(qty), 0) AS totalQty,
+            COUNT(id) AS itemCount,
+            MIN(date) AS minDate,
+            MAX(date) AS maxDate,
+            COUNT(DISTINCT date) AS dateCount,
+            MIN(date) AS earliestDate,
+            MIN(id) AS earliestId,
+            MAX(id) AS maxId
+          FROM hisab
+          ${whereClause}
+          GROUP BY name, address, mobile
+          ORDER BY ${groupOrderBy};
+        `;
+      }
+    } else if (hasWorkFilter) {
       groupSql = `
         SELECT 
-          name, hisabType, address, mobile, workDetails,
+          date,
+          CASE 
+            WHEN INSTR(workDetails, '|') > 0 THEN TRIM(SUBSTR(workDetails, 1, INSTR(workDetails, '|') - 1))
+            ELSE TRIM(COALESCE(workDetails, ''))
+          END AS mainWork,
+          CASE WHEN COUNT(DISTINCT hisabType) = 1 THEN MIN(hisabType) ELSE '' END AS hisabType,
+          CASE 
+            WHEN COUNT(DISTINCT workDetails) = 1 THEN MIN(workDetails)
+            ELSE CASE 
+              WHEN INSTR(workDetails, '|') > 0 THEN TRIM(SUBSTR(workDetails, 1, INSTR(workDetails, '|') - 1))
+              ELSE TRIM(COALESCE(workDetails, ''))
+            END
+          END AS workDetails,
           COALESCE(SUM(bill), 0) AS totalBill,
           COALESCE(SUM(paid), 0) AS totalPaid,
           COALESCE(SUM(due), 0) AS totalDue,
@@ -888,18 +1156,21 @@ export class HisabStorage {
           COUNT(id) AS itemCount,
           MIN(date) AS minDate,
           MAX(date) AS maxDate,
-          COUNT(DISTINCT date) AS dateCount,
-          MIN(date) AS earliestDate,
-          MIN(id) AS earliestId
+          1 AS dateCount,
+          MIN(id) AS earliestId,
+          MAX(id) AS maxId
         FROM hisab
         ${whereClause}
-        GROUP BY name, hisabType, address, mobile, workDetails
-        ORDER BY earliestDate ASC, earliestId ASC;
+        GROUP BY date, CASE WHEN INSTR(workDetails, '|') > 0 THEN TRIM(SUBSTR(workDetails, 1, INSTR(workDetails, '|') - 1)) ELSE TRIM(COALESCE(workDetails, '')) END
+        ORDER BY ${groupOrderBy};
       `;
     } else {
+      // When no work filter is selected, group purely by date
       groupSql = `
         SELECT 
-          date, hisabType, workDetails,
+          date,
+          CASE WHEN COUNT(DISTINCT hisabType) = 1 THEN MIN(hisabType) ELSE '' END AS hisabType,
+          CASE WHEN COUNT(DISTINCT workDetails) = 1 THEN MIN(workDetails) ELSE '' END AS workDetails,
           COALESCE(SUM(bill), 0) AS totalBill,
           COALESCE(SUM(paid), 0) AS totalPaid,
           COALESCE(SUM(due), 0) AS totalDue,
@@ -907,12 +1178,13 @@ export class HisabStorage {
           COUNT(id) AS itemCount,
           MIN(date) AS minDate,
           MAX(date) AS maxDate,
-          COUNT(DISTINCT date) AS dateCount,
-          MIN(id) AS earliestId
+          1 AS dateCount,
+          MIN(id) AS earliestId,
+          MAX(id) AS maxId
         FROM hisab
         ${whereClause}
-        GROUP BY date, hisabType, workDetails
-        ORDER BY date ASC, earliestId ASC;
+        GROUP BY date
+        ORDER BY ${groupOrderBy};
       `;
     }
 
@@ -956,20 +1228,42 @@ export class HisabStorage {
         items: []
       };
 
+      const groupWork = (Utils.parseWorkDetails(groupedItem.workDetails || '').work.trim() || String(row.mainWork || '').trim());
       const key = isUserDetails
-        ? `${groupedItem.name.trim()}_${groupedItem.hisabType.trim()}_${groupedItem.address.trim()}_${groupedItem.mobile.trim()}_${groupedItem.workDetails.trim()}`
-        : `${groupedItem.date.trim()}_${groupedItem.hisabType.trim()}_${groupedItem.workDetails.trim()}`;
+        ? (hasWorkFilter
+            ? `${groupedItem.name.trim()}_${groupedItem.hisabType.trim()}_${groupedItem.address.trim()}_${groupedItem.mobile.trim()}_${groupedItem.workDetails.trim()}`
+            : `${groupedItem.name.trim()}_${groupedItem.address.trim()}_${groupedItem.mobile.trim()}`)
+        : (hasWorkFilter
+            ? `${groupedItem.date.trim()}_${groupWork}`
+            : `${groupedItem.date.trim()}`);
 
       groups.push(groupedItem);
       groupKeyMap.set(key, groupedItem);
     }
     groupStmt.free();
 
-    // 4. Pure SQL: Fetch Child Records (Sorted Date ASC, id ASC)
+    // 4. Pure SQL: Fetch Child Records (Sorted by chosen sortBy and sortOrder)
+    let childOrderBy = '';
+    if (sortBy === 'id') {
+      childOrderBy = `id ${sortOrder}`;
+    } else if (sortBy === 'date') {
+      childOrderBy = `date ${sortOrder}, id ${sortOrder}`;
+    } else if (sortBy === 'qty') {
+      childOrderBy = `qty ${sortOrder}, date ASC, id ASC`;
+    } else if (sortBy === 'bill') {
+      childOrderBy = `bill ${sortOrder}, date ASC, id ASC`;
+    } else if (sortBy === 'paid') {
+      childOrderBy = `paid ${sortOrder}, date ASC, id ASC`;
+    } else if (sortBy === 'due') {
+      childOrderBy = `due ${sortOrder}, date ASC, id ASC`;
+    } else {
+      childOrderBy = 'date ASC, id ASC';
+    }
+
     const childSql = `
       SELECT * FROM hisab
       ${whereClause}
-      ORDER BY date ASC, id ASC;
+      ORDER BY ${childOrderBy};
     `;
 
     const childStmt = db.prepare(childSql);
@@ -979,9 +1273,14 @@ export class HisabStorage {
 
     while (childStmt.step()) {
       const item = childStmt.getAsObject() as unknown as VehicleHisab;
+      const itemWork = Utils.parseWorkDetails(item.workDetails || '').work.trim();
       const key = isUserDetails
-        ? `${(item.name || '').trim()}_${(item.hisabType || '').trim()}_${(item.address || '').trim()}_${(item.mobile || '').trim()}_${(item.workDetails || '').trim()}`
-        : `${(item.date || '').trim()}_${(item.hisabType || '').trim()}_${(item.workDetails || '').trim()}`;
+        ? (hasWorkFilter
+            ? `${(item.name || '').trim()}_${(item.hisabType || '').trim()}_${(item.address || '').trim()}_${(item.mobile || '').trim()}_${(item.workDetails || '').trim()}`
+            : `${(item.name || '').trim()}_${(item.address || '').trim()}_${(item.mobile || '').trim()}`)
+        : (hasWorkFilter
+            ? `${(item.date || '').trim()}_${itemWork}`
+            : `${(item.date || '').trim()}`);
 
       const grp = groupKeyMap.get(key);
       if (grp) {
@@ -1005,6 +1304,81 @@ export class HisabStorage {
   ): Promise<GroupedHisab[]> {
     const res = await this.getQueryResult(query, searchColumn, groupByMode, workDetailsFilter, customerFilter);
     return res.groups;
+  }
+
+  /**
+   * Pure SQL + JS Extraction for all distinct filter options
+   */
+  public static async getDistinctFilterOptions(): Promise<{
+    names: string[];
+    mobiles: string[];
+    addresses: string[];
+    hisabTypes: string[];
+    mainWorks: string[];
+    years: string[];
+    sessions: string[];
+    managers: string[];
+    vehicles: string[];
+    drivers: string[];
+    beds: string[];
+  }> {
+    const db = await getSqliteDb();
+
+    const extractColumn = (sql: string): string[] => {
+      try {
+        const res = db.exec(sql);
+        if (res.length > 0 && res[0].values.length > 0) {
+          const list: string[] = [];
+          for (const row of res[0].values) {
+            if (row[0]) {
+              const val = String(row[0]).trim();
+              if (val) list.push(val);
+            }
+          }
+          return list;
+        }
+      } catch {}
+      return [];
+    };
+
+    const names = extractColumn("SELECT DISTINCT TRIM(name) FROM hisab WHERE name IS NOT NULL AND TRIM(name) != '' ORDER BY name ASC");
+    const mobiles = extractColumn("SELECT DISTINCT TRIM(mobile) FROM hisab WHERE mobile IS NOT NULL AND TRIM(mobile) != '' ORDER BY mobile ASC");
+    const addresses = extractColumn("SELECT DISTINCT TRIM(address) FROM hisab WHERE address IS NOT NULL AND TRIM(address) != '' ORDER BY address ASC");
+    const hisabTypes = extractColumn("SELECT DISTINCT TRIM(hisabType) FROM hisab WHERE hisabType IS NOT NULL AND TRIM(hisabType) != '' ORDER BY hisabType ASC");
+    const workDetailsList = extractColumn("SELECT DISTINCT TRIM(workDetails) FROM hisab WHERE workDetails IS NOT NULL AND TRIM(workDetails) != '' ORDER BY workDetails ASC");
+
+    const mainWorksSet = new Set<string>();
+    const yearsSet = new Set<string>();
+    const sessionsSet = new Set<string>();
+    const managersSet = new Set<string>();
+    const vehiclesSet = new Set<string>();
+    const driversSet = new Set<string>();
+    const bedsSet = new Set<string>();
+
+    workDetailsList.forEach((raw) => {
+      const parsed = Utils.parseWorkDetails(raw);
+      if (parsed.work) mainWorksSet.add(parsed.work);
+      if (parsed.year) yearsSet.add(parsed.year);
+      if (parsed.session) sessionsSet.add(parsed.session);
+      if (parsed.manager) managersSet.add(parsed.manager);
+      if (parsed.vehicle) vehiclesSet.add(parsed.vehicle);
+      if (parsed.driver) driversSet.add(parsed.driver);
+      if (parsed.trolleyBed) bedsSet.add(parsed.trolleyBed);
+    });
+
+    return {
+      names,
+      mobiles,
+      addresses,
+      hisabTypes,
+      mainWorks: Array.from(mainWorksSet).sort((a, b) => a.localeCompare(b, 'bn')),
+      years: Array.from(yearsSet).sort((a, b) => a.localeCompare(b, 'bn')),
+      sessions: Array.from(sessionsSet).sort((a, b) => a.localeCompare(b, 'bn')),
+      managers: Array.from(managersSet).sort((a, b) => a.localeCompare(b, 'bn')),
+      vehicles: Array.from(vehiclesSet).sort((a, b) => a.localeCompare(b, 'bn')),
+      drivers: Array.from(driversSet).sort((a, b) => a.localeCompare(b, 'bn')),
+      beds: Array.from(bedsSet).sort((a, b) => a.localeCompare(b, 'bn'))
+    };
   }
 
   /**

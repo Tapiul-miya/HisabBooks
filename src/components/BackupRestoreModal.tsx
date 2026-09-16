@@ -161,20 +161,54 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({
     }
   };
 
-  const loadDriveBackupsList = useCallback(async (tokenToUse?: string) => {
-    const token = tokenToUse || authToken || (await getAccessToken());
+  const loadDriveBackupsList = useCallback(async (tokenToUse?: string, forceRefreshAuth = false) => {
+    let token = tokenToUse || authToken || (await getAccessToken());
+
+    // If forceRefreshAuth is true or token is missing, attempt googleSignIn to get fresh token
+    if ((!token || forceRefreshAuth) && !isLoggingIn) {
+      try {
+        const res = await googleSignIn();
+        if (res?.accessToken) {
+          setCurrentUser(res.user);
+          setAuthToken(res.accessToken);
+          token = res.accessToken;
+        }
+      } catch (err) {
+        console.warn('Silent auth refresh info:', err);
+      }
+    }
+
     if (!token) return;
 
     setIsLoadingCloud(true);
     try {
       const backups = await listDriveBackups(token);
       setCloudBackups(backups);
-    } catch (err) {
+    } catch (err: unknown) {
       console.warn('Failed to load drive backups:', err);
+      // On 401 or network error, attempt token refresh once automatically
+      if (!forceRefreshAuth) {
+        try {
+          const res = await googleSignIn();
+          if (res?.accessToken) {
+            setCurrentUser(res.user);
+            setAuthToken(res.accessToken);
+            const retryBackups = await listDriveBackups(res.accessToken);
+            setCloudBackups(retryBackups);
+            return;
+          }
+        } catch (retryErr) {
+          console.warn('Auto refresh retry error:', retryErr);
+        }
+      }
+      setMessage({
+        type: 'error',
+        text: 'ড্রাইভ ফাইল রিফ্রেশ করতে সমস্যা হয়েছে। সেশন সচল করতে লগআউট করে পুনরায় সাইন ইন করুন।'
+      });
     } finally {
       setIsLoadingCloud(false);
     }
-  }, [authToken]);
+  }, [authToken, isLoggingIn]);
 
   useEffect(() => {
     fetchCount();
