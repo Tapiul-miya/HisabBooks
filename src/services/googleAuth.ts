@@ -24,8 +24,8 @@ export const ensureGoogleAuthInitialized = async () => {
   try {
     if (Capacitor.isNativePlatform() && GoogleAuth) {
       await (GoogleAuth as any).initialize({
-        clientId: '13178099429-u613g9lmhp7vjf7saut3ov1brhftdbm9.apps.googleusercontent.com',
-        serverClientId: '13178099429-u613g9lmhp7vjf7saut3ov1brhftdbm9.apps.googleusercontent.com',
+        clientId: '13178099429-opsha0jscrbnqun3ubfq370efl8oihfp.apps.googleusercontent.com', // Correct Android Client ID
+        serverClientId: '13178099429-u613g9lmhp7vjf7saut3ov1brhftdbm9.apps.googleusercontent.com', // Web Client ID
         scopes: ['profile', 'email', 'https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/drive.appdata'],
         grantOfflineAccess: true
       });

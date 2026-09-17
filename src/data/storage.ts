@@ -119,26 +119,28 @@ let idbOpenPromise: Promise<IDBDatabase | null> | null = null;
 
 // Global safety suppression for closing IndexedDB connections during tab sleep/unload
 if (typeof window !== 'undefined') {
+  const isClosingError = (str: string) => {
+    const s = String(str || '').toLowerCase();
+    return s.includes('database is closing') ||
+      s.includes('closing/hidden') ||
+      s.includes('invalidstateerror') ||
+      s.includes('database connection is closing') ||
+      s.includes('transaction is inactive') ||
+      s.includes('transactioninactiveerror');
+  };
+
   window.addEventListener('unhandledrejection', (event) => {
-    const reason = String(event?.reason || '');
-    if (
-      reason.includes('Database is closing') ||
-      reason.includes('closing/hidden') ||
-      reason.includes('InvalidStateError') ||
-      reason.includes('database connection is closing')
-    ) {
+    const reason = event?.reason;
+    const reasonStr = reason ? String(reason.message || reason.name || reason) : '';
+    if (isClosingError(reasonStr)) {
       if (typeof event.preventDefault === 'function') event.preventDefault();
     }
   });
 
   window.addEventListener('error', (event) => {
-    const msg = String(event?.message || '');
-    if (
-      msg.includes('Database is closing') ||
-      msg.includes('closing/hidden') ||
-      msg.includes('InvalidStateError') ||
-      msg.includes('database connection is closing')
-    ) {
+    const msgStr = event?.message ? String(event.message) : '';
+    const errStr = event?.error ? String(event.error.message || event.error.name || event.error) : '';
+    if (isClosingError(msgStr) || isClosingError(errStr)) {
       if (typeof event.preventDefault === 'function') event.preventDefault();
     }
   });
@@ -154,6 +156,12 @@ async function getIDBConnection(forceNew: boolean = false): Promise<IDBDatabase 
     try {
       // Test if transaction is executable on current connection without closing error
       const testTx = idbInstance.transaction(DB_STORE_NAME, 'readonly');
+      testTx.onerror = (e) => {
+        if (e && typeof e.preventDefault === 'function') e.preventDefault();
+      };
+      testTx.onabort = (e) => {
+        if (e && typeof e.preventDefault === 'function') e.preventDefault();
+      };
       try { testTx.abort(); } catch {}
       return idbInstance;
     } catch {
@@ -364,14 +372,21 @@ async function getWasmBinary(): Promise<ArrayBuffer> {
       const cached = await new Promise<ArrayBuffer | null>((resolve) => {
         try {
           const tx = idb.transaction(DB_STORE_NAME, 'readonly');
-          const store = tx.objectStore(DB_STORE_NAME);
-          const req = store.get('sql_wasm_binary_cache_v1');
-          req.onsuccess = () => resolve(req.result || null);
-          req.onerror = () => {
+          tx.onerror = (e) => {
+            if (e && typeof e.preventDefault === 'function') e.preventDefault();
             idbInstance = null;
             resolve(null);
           };
-          tx.onerror = () => {
+          tx.onabort = (e) => {
+            if (e && typeof e.preventDefault === 'function') e.preventDefault();
+            idbInstance = null;
+            resolve(null);
+          };
+          const store = tx.objectStore(DB_STORE_NAME);
+          const req = store.get('sql_wasm_binary_cache_v1');
+          req.onsuccess = () => resolve(req.result || null);
+          req.onerror = (e) => {
+            if (e && typeof e.preventDefault === 'function') e.preventDefault();
             idbInstance = null;
             resolve(null);
           };
@@ -420,8 +435,22 @@ async function getWasmBinary(): Promise<ArrayBuffer> {
               if (idb) {
                 try {
                   const tx = idb.transaction(DB_STORE_NAME, 'readwrite');
-                  tx.objectStore(DB_STORE_NAME).put(buf, 'sql_wasm_binary_cache_v1');
-                } catch {}
+                  tx.onerror = (e) => {
+                    if (e && typeof e.preventDefault === 'function') e.preventDefault();
+                    idbInstance = null;
+                  };
+                  tx.onabort = (e) => {
+                    if (e && typeof e.preventDefault === 'function') e.preventDefault();
+                    idbInstance = null;
+                  };
+                  const putReq = tx.objectStore(DB_STORE_NAME).put(buf, 'sql_wasm_binary_cache_v1');
+                  putReq.onerror = (e) => {
+                    if (e && typeof e.preventDefault === 'function') e.preventDefault();
+                    idbInstance = null;
+                  };
+                } catch {
+                  idbInstance = null;
+                }
               }
             }).catch(() => {});
             return buf;
