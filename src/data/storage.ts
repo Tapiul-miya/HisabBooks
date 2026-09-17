@@ -152,6 +152,23 @@ if (typeof window !== 'undefined') {
 }
 
 // Safe IDB Connection Manager
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      // Invalidate on wake-up to guarantee fresh connection
+      idbInstance = null;
+    } else {
+      // Cleanly close connection when hidden to prevent "Database is closing/hidden" error
+      if (idbInstance) {
+        try {
+          idbInstance.close();
+        } catch {}
+        idbInstance = null;
+      }
+    }
+  });
+}
+
 async function getIDBConnection(forceNew: boolean = false): Promise<IDBDatabase | null> {
   if (typeof window === 'undefined' || typeof indexedDB === 'undefined') {
     return null;
@@ -160,24 +177,14 @@ async function getIDBConnection(forceNew: boolean = false): Promise<IDBDatabase 
   // If page is hidden, connection is likely in closing or hidden state by the browser lifecycle.
   // Invalidate connection to force a fresh, clean request upon waking up.
   if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
-    idbInstance = null;
+    if (idbInstance) {
+      try { idbInstance.close(); } catch {}
+      idbInstance = null;
+    }
   }
 
   if (!forceNew && idbInstance) {
-    try {
-      // Test if transaction is executable on current connection without closing error
-      const testTx = idbInstance.transaction(DB_STORE_NAME, 'readonly');
-      testTx.onerror = (e) => {
-        if (e && typeof e.preventDefault === 'function') e.preventDefault();
-      };
-      testTx.onabort = (e) => {
-        if (e && typeof e.preventDefault === 'function') e.preventDefault();
-      };
-      try { testTx.abort(); } catch {}
-      return idbInstance;
-    } catch {
-      idbInstance = null;
-    }
+    return idbInstance;
   }
 
   if (!forceNew && idbOpenPromise) return idbOpenPromise;
