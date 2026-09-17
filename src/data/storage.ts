@@ -126,7 +126,10 @@ if (typeof window !== 'undefined') {
       s.includes('invalidstateerror') ||
       s.includes('database connection is closing') ||
       s.includes('transaction is inactive') ||
-      s.includes('transactioninactiveerror');
+      s.includes('transactioninactiveerror') ||
+      s.includes('closing') ||
+      s.includes('hidden') ||
+      s.includes('inactive');
   };
 
   window.addEventListener('unhandledrejection', (event) => {
@@ -134,22 +137,30 @@ if (typeof window !== 'undefined') {
     const reasonStr = reason ? String(reason.message || reason.name || reason) : '';
     if (isClosingError(reasonStr)) {
       if (typeof event.preventDefault === 'function') event.preventDefault();
+      if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
     }
-  });
+  }, true);
 
   window.addEventListener('error', (event) => {
     const msgStr = event?.message ? String(event.message) : '';
     const errStr = event?.error ? String(event.error.message || event.error.name || event.error) : '';
     if (isClosingError(msgStr) || isClosingError(errStr)) {
       if (typeof event.preventDefault === 'function') event.preventDefault();
+      if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
     }
-  });
+  }, true);
 }
 
 // Safe IDB Connection Manager
 async function getIDBConnection(forceNew: boolean = false): Promise<IDBDatabase | null> {
   if (typeof window === 'undefined' || typeof indexedDB === 'undefined') {
     return null;
+  }
+
+  // If page is hidden, connection is likely in closing or hidden state by the browser lifecycle.
+  // Invalidate connection to force a fresh, clean request upon waking up.
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+    idbInstance = null;
   }
 
   if (!forceNew && idbInstance) {
