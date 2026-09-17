@@ -24,8 +24,9 @@ export const ensureGoogleAuthInitialized = async () => {
   try {
     if (Capacitor.isNativePlatform() && GoogleAuth) {
       await (GoogleAuth as any).initialize({
-        clientId: '13178099429-opsha0jscrbnqun3ubfq370efl8oihfp.apps.googleusercontent.com', // Correct Android Client ID
-        serverClientId: '13178099429-u613g9lmhp7vjf7saut3ov1brhftdbm9.apps.googleusercontent.com', // Web Client ID
+        clientId: '13178099429-u613g9lmhp7vjf7saut3ov1brhftdbm9.apps.googleusercontent.com', // Web Client ID as default
+        androidClientId: '13178099429-opsha0jscrbnqun3ubfq370efl8oihfp.apps.googleusercontent.com', // Dedicated Android Client ID
+        serverClientId: '13178099429-u613g9lmhp7vjf7saut3ov1brhftdbm9.apps.googleusercontent.com', // Web Client ID for OAuth server exchange
         scopes: ['profile', 'email', 'https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/drive.appdata'],
         grantOfflineAccess: true
       });
@@ -229,8 +230,10 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
             errorTypeMsg = 'কারণ: গুগল প্লে সার্ভিসেস সমস্যা বা কনফিগারেশন অমিল (Code 12500: SIGN_IN_FAILED)।';
           } else if (errStr.includes('7') || errStr.toLowerCase().includes('network')) {
             errorTypeMsg = 'কারণ: নেটওয়ার্ক সংযোগ সমস্যা (Code 7: NETWORK_ERROR)।';
+          } else if (errStr.toLowerCase().includes('something went wrong')) {
+            errorTypeMsg = 'কারণ: এই APK-এর SHA-1 সিগনেচার কি (Signature Key) ফায়ারবেস বা গুগল ক্লাউড কনসোলে রেজিস্টার করা নেই। এটি প্লে সার্ভিসেসের একটি ওঅথ সিকিউরিটি ব্লক। অনুগ্রহ করে সঠিক SHA-1 কি-টি ফায়ারবেস কনসোলে যুক্ত করুন।';
           } else {
-            errorTypeMsg = `কারণ: প্লে সার্ভিসেস / ওঅথ সমস্যা (${errStr || 'অজানা ত্রুটি'})।`;
+            errorTypeMsg = `কারণ: প্লে সার্ভিসেস / ওঅথ সমস্যা (${errStr || 'অজানা ত্রুটি'})। এটি সাধারণত গুগল কনসোলে SHA-1 কি এবং প্যাকেজ নেম মিসম্যাচ হওয়ার কারণে হয়ে থাকে।`;
           }
 
           const bugReportInfo = `[বাগ রিপোর্ট / ত্রুটির বিবরণ]:\n• মূল এরর: ${errStr || 'N/A'}\n• ${errorTypeMsg}`;
