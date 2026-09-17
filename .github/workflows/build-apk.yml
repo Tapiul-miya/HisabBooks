@@ -49,17 +49,26 @@ jobs:
             echo "debug.keystore not found. Generating a stable debug.keystore..."
             cd android
             keytool -genkeypair -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
-              -keystore app/debug.keystore \
-              -storepass android -keypass android \
-              -dname "CN=Android Debug, O=Android, C=US"
+               -keystore app/debug.keystore \
+               -storepass android -keypass android \
+               -dname "CN=Android Debug, O=Android, C=US"
             cd ..
-            
-            echo "Commiting and pushing debug.keystore back to the repository..."
-            git config --global user.name "github-actions[bot]"
-            git config --global user.email "github-actions[bot]@users.noreply.github.com"
-            git add android/app/debug.keystore
-            git commit -m "chore: commit stable debug.keystore for permanent SHA-1"
+          fi
+          
+          echo "Syncing configuration files back to GitHub if not already present..."
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Add files safely
+          git add android/app/debug.keystore || true
+          git add android/app/google-services.json || true
+          
+          if git status --porcelain | grep -E "android/app/debug.keystore|android/app/google-services.json" > /dev/null; then
+            echo "New or modified configurations detected. Pushing back to your repository..."
+            git commit -m "chore: save stable debug.keystore and google-services.json configs"
             git push || echo "Git push failed, please make sure 'Read and write permissions' are enabled in Repo Settings > Actions > General > Workflow permissions"
+          else
+            echo "Both debug.keystore and google-services.json are already up to date on GitHub!"
           fi
           
           cd android
