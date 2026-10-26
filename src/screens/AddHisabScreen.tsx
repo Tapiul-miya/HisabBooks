@@ -1573,7 +1573,7 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
           >
             <div className="flex items-center space-x-2 font-bold text-sm">
               {due > 0 ? <AlertCircle size={20} /> : <CheckCircle size={20} />}
-              <span>সর্বমোট বকেয়া:</span>
+              <span>সর্বমোট বকেয়া:</span>
             </div>
             <span className="text-base font-extrabold">
               ৳ {Utils.toCleanString(due)}

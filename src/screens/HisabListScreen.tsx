@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Plus, UserCheck, X, Filter, Calendar, Tag, DollarSign, SlidersHorizontal, User as UserIcon, ArrowUpDown, ArrowLeft } from 'lucide-react';
+import { Plus, UserCheck, X, Filter, Calendar, Tag, DollarSign, SlidersHorizontal, User as UserIcon, ArrowUpDown, ArrowLeft, Trash2 } from 'lucide-react';
 import { GroupedHisab, GroupByMode, VehicleHisab, getGroupKey, DatabaseTotals, CustomerFilter, AdvancedFilterState, initialAdvancedFilterState, DateWorkFilter } from '../types';
 import { HeaderSummary } from '../components/HeaderSummary';
 import { DashboardSearchBar } from '../components/DashboardSearchBar';
@@ -81,7 +81,20 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
   const [showSearch, setShowSearch] = useState(false);
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [visibleCount, setVisibleCount] = useState(INITIAL_BATCH_SIZE);
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<number>>(new Set());
   const mainScrollRef = useRef<HTMLElement | null>(null);
+
+  const handleToggleItemSelection = useCallback((id: number) => {
+    setSelectedItemIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
 
   const isSearchOpen = showSearch || searchQuery.length > 0;
 
@@ -405,6 +418,7 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
               </button>
             </div>
           )}
+
         </div>
       </div>
     )}
@@ -440,6 +454,8 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
                   onCustomerClick={onCustomerClick}
                   onDateClick={onDateClick}
                   onReloadData={onReloadData}
+                  selectedItemIds={selectedItemIds}
+                  onToggleItemSelection={handleToggleItemSelection}
                 />
               );
             })}

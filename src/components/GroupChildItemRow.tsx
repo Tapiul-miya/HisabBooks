@@ -11,6 +11,8 @@ interface GroupChildItemRowProps {
   onEdit: (item: VehicleHisab) => void;
   onCustomerClick?: (filter: CustomerFilter) => void;
   onDateClick?: (filter: DateWorkFilter) => void;
+  isSelected?: boolean;
+  onToggleSelection?: (id: number) => void;
 }
 
 export const GroupChildItemRow: React.FC<GroupChildItemRowProps> = ({
@@ -20,7 +22,9 @@ export const GroupChildItemRow: React.FC<GroupChildItemRowProps> = ({
   onDelete,
   onEdit,
   onCustomerClick,
-  onDateClick
+  onDateClick,
+  isSelected,
+  onToggleSelection
 }) => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
@@ -119,7 +123,14 @@ export const GroupChildItemRow: React.FC<GroupChildItemRowProps> = ({
             </div>
           )}
         </div>
-        <div className="flex items-center space-x-1 shrink-0">
+        <div className="flex items-center space-x-1.5 shrink-0">
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={() => onToggleSelection?.(item.id)}
+            className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+            onClick={(e) => e.stopPropagation()}
+          />
           <button
             onClick={() => onEdit(item)}
             className="p-1 text-blue-600 hover:bg-blue-100/70 rounded-md transition-colors"
@@ -144,8 +155,16 @@ export const GroupChildItemRow: React.FC<GroupChildItemRowProps> = ({
       )}
 
       {/* Measurement / Calculation Box with smooth translucent gradient */}
-      <div className="text-xs font-semibold text-slate-800 break-words whitespace-normal mt-1 bg-white/85 px-2.5 py-1.5 rounded-lg border border-slate-200/70 shadow-2xs">
-        {getMeasurementText()}
+      <div className="bg-gradient-to-r from-slate-50 to-white border border-slate-200/60 rounded-lg px-2.5 py-2 shadow-2xs">
+        <div className="text-[11px] font-bold text-slate-700">
+          {getMeasurementText()}
+        </div>
+        {(item.qty !== undefined || item.stm) && (
+          <div className="flex justify-between items-center text-[9px] font-bold text-slate-400 mt-1 px-1 italic tracking-tighter">
+            <span>পরিমাণ: {item.qty}</span>
+            {item.stm && <span className="text-right">সূত্র: {item.stm}</span>}
+          </div>
+        )}
       </div>
 
       <div className={`flex items-center justify-between text-xs font-semibold text-slate-800 mt-2.5 pt-2 border-t ${isDue ? 'border-rose-100' : 'border-emerald-100'} px-0.5`}>
@@ -158,7 +177,7 @@ export const GroupChildItemRow: React.FC<GroupChildItemRowProps> = ({
         <span>
           {isDue ? (
             <span className="text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md whitespace-nowrap inline-block shadow-2xs">
-              বকেয়া: ৳{Utils.toCleanString(item.due)}
+              বকেয়া: ৳{Utils.toCleanString(item.due)}
             </span>
           ) : (
             <span className="text-xs font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md whitespace-nowrap inline-block shadow-2xs">

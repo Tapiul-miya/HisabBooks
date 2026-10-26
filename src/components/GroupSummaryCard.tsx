@@ -23,6 +23,8 @@ interface GroupSummaryCardProps {
   onCustomerClick?: (filter: CustomerFilter) => void;
   onDateClick?: (filter: DateWorkFilter) => void;
   onReloadData?: () => void;
+  selectedItemIds?: Set<number>;
+  onToggleItemSelection?: (id: number) => void;
 }
 
 export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
@@ -41,7 +43,9 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
   onCopyClick,
   onCustomerClick,
   onDateClick,
-  onReloadData
+  onReloadData,
+  selectedItemIds,
+  onToggleItemSelection
 }) => {
   const [showPdfPreview, setShowPdfPreview] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -88,6 +92,29 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
       ? groupedHisab.ymd 
       : Utils.formatDaysToYMD(groupedHisab.totalQty);
     qtyText = `বছর: ${ymdVal}`;
+  }
+
+  const selectedItems = groupedHisab.items.filter(item => selectedItemIds?.has(item.id));
+  const selectedSum = selectedItems.reduce((acc, item) => acc + (item.qty || 0), 0);
+  const selectedBillSum = selectedItems.reduce((acc, item) => acc + (item.bill || 0), 0);
+  const selectedPaidSum = selectedItems.reduce((acc, item) => acc + (item.paid || 0), 0);
+  const selectedDueSum = selectedItems.reduce((acc, item) => acc + (item.due || 0), 0);
+  
+  let selectedQtyText = '';
+  if (selectedItems.length > 0) {
+    if (type.includes('trip')) {
+      selectedQtyText = `ট্রিপ: ${Math.round(selectedSum)}`;
+    } else if (type.includes('hour')) {
+      selectedQtyText = `ঘণ্টা: ${Utils.minuteToHour(selectedSum)}`;
+    } else if (type.includes('bigha')) {
+      selectedQtyText = `বিঘা: ${Utils.formatKathaToBigha(selectedSum)}`;
+    } else if (type.includes('monthly') || type.includes('month')) {
+      selectedQtyText = `বছর: ${Utils.formatDaysToYMD(selectedSum)}`;
+    } else if (type.includes('জমা') || type.includes('joma') || type.includes('paid')) {
+      selectedQtyText = `জমা: ${selectedSum}`;
+    } else {
+      selectedQtyText = `${selectedSum}`;
+    }
   }
 
   const getHisabTypeLabel = (typeKey: string) => {
@@ -205,6 +232,30 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
             </div>
 
             <div className="flex items-center space-x-0.5 shrink-0">
+              {/* Select All Checkbox for Group */}
+              <div className="flex items-center px-1 mr-1">
+                <input
+                  type="checkbox"
+                  checked={groupedHisab.items.length > 0 && groupedHisab.items.every(item => selectedItemIds?.has(item.id))}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    if (onToggleItemSelection) {
+                      const allSelected = groupedHisab.items.every(item => selectedItemIds?.has(item.id));
+                      groupedHisab.items.forEach(item => {
+                        const isSelected = selectedItemIds?.has(item.id);
+                        if (allSelected && isSelected) {
+                          onToggleItemSelection(item.id);
+                        } else if (!allSelected && !isSelected) {
+                          onToggleItemSelection(item.id);
+                        }
+                      });
+                    }
+                  }}
+                  className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                  onClick={(e) => e.stopPropagation()}
+                  title="এই গ্রুপের সব আইটেম সিলেক্ট করুন"
+                />
+              </div>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -259,31 +310,57 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
             </div>
 
             {!hideWorkAndQtyBadges && (
-              <div className="bg-amber-50 text-amber-900 border border-amber-200/80 px-2 py-0.5 rounded-md text-[11px] sm:text-xs font-bold shrink-0 text-right shadow-2xs whitespace-normal break-words">
-                {qtyText}
+              <div className="flex flex-col items-end space-y-1 shrink-0">
+                <div className="bg-amber-50 text-amber-900 border border-amber-200/80 px-2 py-0.5 rounded-md text-[11px] sm:text-xs font-bold text-right shadow-2xs whitespace-normal break-words">
+                  {qtyText}
+                </div>
+                {selectedItems.length > 0 && (
+                  <div className="bg-blue-50 text-blue-900 border border-blue-200/80 px-1.5 py-0.2 rounded-md text-[8px] sm:text-[9px] font-bold text-right shadow-2xs whitespace-normal break-words">
+                    {selectedQtyText}
+                  </div>
+                )}
               </div>
             )}
           </div>
 
           <div className="my-2 border-t border-[#CFD8DC]"></div>
 
-          <div className="flex items-center justify-between text-xs font-semibold text-[#2C3E50]">
-            <span className="text-slate-700">
-              বিল: <span className="font-bold text-slate-900">৳{Utils.toCleanString(groupedHisab.totalBill)}</span>
-            </span>
-            <span className="text-[#15803D]">
-              জমা: <span className="font-bold text-[#15803D]">৳{Utils.toCleanString(groupedHisab.totalPaid)}</span>
-            </span>
+          <div className="flex items-start justify-between text-xs font-semibold text-[#2C3E50]">
+            <div className="flex flex-col">
+              <span className="text-slate-700">
+                বিল: <span className="font-bold text-slate-900">৳{Utils.toCleanString(groupedHisab.totalBill)}</span>
+              </span>
+              {selectedItems.length > 0 && (
+                <span className="text-indigo-600 text-[8px] font-bold mt-0.5">
+                  বিল: ৳{Utils.toCleanString(selectedBillSum)}
+                </span>
+              )}
+            </div>
+            <div className="flex flex-col items-end text-right">
+              <span className="text-[#15803D]">
+                জমা: <span className="font-bold text-[#15803D]">৳{Utils.toCleanString(groupedHisab.totalPaid)}</span>
+              </span>
+              {selectedItems.length > 0 && (
+                <span className="text-emerald-600 text-[8px] font-bold mt-0.5">
+                  জমা: ৳{Utils.toCleanString(selectedPaidSum)}
+                </span>
+              )}
+            </div>
           </div>
 
-          <div className="flex justify-end mt-1.5">
+          <div className="flex flex-col items-end mt-1.5">
             {isDue ? (
               <span className="text-xs font-bold text-[#DC2626] bg-red-50 px-2 py-0.5 rounded-md whitespace-nowrap">
-                বকেয়া: ৳{Utils.toCleanString(groupedHisab.totalDue)}
+                বকেয়া: ৳{Utils.toCleanString(groupedHisab.totalDue)}
               </span>
             ) : (
               <span className="text-xs font-bold text-[#16A34A] bg-emerald-50 px-2 py-0.5 rounded-md whitespace-nowrap">
                 পরিশোধিত: ৳{Utils.toCleanString(groupedHisab.totalDue)}
+              </span>
+            )}
+            {selectedItems.length > 0 && (
+              <span className="text-rose-600 text-[8px] font-bold mt-0.5 px-1">
+                বকেয়া: ৳{Utils.toCleanString(selectedDueSum)}
               </span>
             )}
           </div>
@@ -305,6 +382,8 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
                 onEdit={onEditClick}
                 onCustomerClick={onCustomerClick}
                 onDateClick={onDateClick}
+                isSelected={selectedItemIds?.has(item.id)}
+                onToggleSelection={onToggleItemSelection}
               />
             ))}
           </div>
