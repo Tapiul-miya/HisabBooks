@@ -94,28 +94,7 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
     qtyText = `বছর: ${ymdVal}`;
   }
 
-  const selectedItems = groupedHisab.items.filter(item => selectedItemIds?.has(item.id));
-  const selectedSum = selectedItems.reduce((acc, item) => acc + (item.qty || 0), 0);
-  const selectedBillSum = selectedItems.reduce((acc, item) => acc + (item.bill || 0), 0);
-  const selectedPaidSum = selectedItems.reduce((acc, item) => acc + (item.paid || 0), 0);
-  const selectedDueSum = selectedItems.reduce((acc, item) => acc + (item.due || 0), 0);
-  
-  let selectedQtyText = '';
-  if (selectedItems.length > 0) {
-    if (type.includes('trip')) {
-      selectedQtyText = `ট্রিপ: ${Math.round(selectedSum)}`;
-    } else if (type.includes('hour')) {
-      selectedQtyText = `ঘণ্টা: ${Utils.minuteToHour(selectedSum)}`;
-    } else if (type.includes('bigha')) {
-      selectedQtyText = `বিঘা: ${Utils.formatKathaToBigha(selectedSum)}`;
-    } else if (type.includes('monthly') || type.includes('month')) {
-      selectedQtyText = `বছর: ${Utils.formatDaysToYMD(selectedSum)}`;
-    } else if (type.includes('জমা') || type.includes('joma') || type.includes('paid')) {
-      selectedQtyText = `জমা: ${selectedSum}`;
-    } else {
-      selectedQtyText = `${selectedSum}`;
-    }
-  }
+
 
   const getHisabTypeLabel = (typeKey: string) => {
     return Utils.getHisabTypeLabel(typeKey);
@@ -127,7 +106,12 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
       : `📅 ${groupedHisab.date}`;
 
   // Premium, rich gradient depending on Due status and active selection
-  const cardGradient = isDue
+  const isGroupSelected = groupedHisab.items.length > 0 && groupedHisab.items.every(item => selectedItemIds?.has(item.id));
+  const isAnyItemSelected = groupedHisab.items.some(item => selectedItemIds?.has(item.id));
+  
+  const cardGradient = isAnyItemSelected
+    ? 'bg-gradient-to-b from-amber-50 via-amber-50/80 to-amber-100/50 border-amber-400 shadow-md ring-3 ring-amber-500/40'
+    : isDue
     ? 'bg-gradient-to-b from-[#FFFFFF] via-[#FFFDFD] to-[#FFF5F5] border-rose-400/90 shadow-[0_3px_12px_-2px_rgba(244,63,94,0.12)]'
     : 'bg-gradient-to-b from-[#FFFFFF] via-[#F8FCF9] to-[#EFFBF4] border-emerald-400/90 shadow-[0_3px_12px_-2px_rgba(16,185,129,0.12)]';
 
@@ -144,7 +128,7 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
       >
         <div
           onClick={onExpandToggle}
-          className="p-3.5 sm:p-4 cursor-pointer select-none"
+          className="p-2.5 sm:p-3 cursor-pointer select-none"
         >
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
@@ -236,7 +220,7 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
               <div className="flex items-center px-1 mr-1">
                 <input
                   type="checkbox"
-                  checked={groupedHisab.items.length > 0 && groupedHisab.items.every(item => selectedItemIds?.has(item.id))}
+                  checked={isGroupSelected}
                   onChange={(e) => {
                     e.stopPropagation();
                     if (onToggleItemSelection) {
@@ -292,7 +276,7 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
             </div>
           </div>
 
-          <div className="flex items-start justify-between mt-1.5 pt-1.5 border-t border-slate-100 text-xs gap-2">
+          <div className="flex items-start justify-between mt-1 pt-1 border-t border-slate-100 text-xs gap-2">
             <div className="min-w-0 flex-1 space-y-1">
               {!hideWorkAndQtyBadges && groupedHisab.workDetails ? (
                 <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
@@ -309,60 +293,31 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
               </div>
             </div>
 
-            {!hideWorkAndQtyBadges && (
-              <div className="flex flex-col items-end space-y-1 shrink-0">
+            <div className="flex flex-col items-end space-y-1 shrink-0">
+              <div className="text-slate-700 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-md text-[11px] font-bold shadow-2xs">
+                বিল: <span className="text-slate-900">৳{Utils.toCleanString(groupedHisab.totalBill)}</span>
+              </div>
+              {!hideWorkAndQtyBadges && (
                 <div className="bg-amber-50 text-amber-900 border border-amber-200/80 px-2 py-0.5 rounded-md text-[11px] sm:text-xs font-bold text-right shadow-2xs whitespace-normal break-words">
                   {qtyText}
                 </div>
-                {selectedItems.length > 0 && (
-                  <div className="bg-blue-50 text-blue-900 border border-blue-200/80 px-1.5 py-0.2 rounded-md text-[8px] sm:text-[9px] font-bold text-right shadow-2xs whitespace-normal break-words">
-                    {selectedQtyText}
-                  </div>
-                )}
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
-          <div className="my-2 border-t border-[#CFD8DC]"></div>
+          <div className="mt-0.5 mb-0.5 border-t border-[#CFD8DC]"></div>
 
-          <div className="flex items-start justify-between text-xs font-semibold text-[#2C3E50]">
+          <div className="flex items-start justify-between text-xs font-semibold py-0">
             <div className="flex flex-col">
-              <span className="text-slate-700">
-                বিল: <span className="font-bold text-slate-900">৳{Utils.toCleanString(groupedHisab.totalBill)}</span>
+              <span className="text-[#15803D]">
+                জমা: <span className="font-bold">৳{Utils.toCleanString(groupedHisab.totalPaid)}</span>
               </span>
-              {selectedItems.length > 0 && (
-                <span className="text-indigo-600 text-[8px] font-bold mt-0.5">
-                  বিল: ৳{Utils.toCleanString(selectedBillSum)}
-                </span>
-              )}
             </div>
             <div className="flex flex-col items-end text-right">
-              <span className="text-[#15803D]">
-                জমা: <span className="font-bold text-[#15803D]">৳{Utils.toCleanString(groupedHisab.totalPaid)}</span>
+              <span className={isDue ? 'text-[#DC2626]' : 'text-[#15803D]'}>
+                {isDue ? 'বকেয়া' : 'পরিশোধিত'}: <span className="font-bold">৳{Utils.toCleanString(groupedHisab.totalDue)}</span>
               </span>
-              {selectedItems.length > 0 && (
-                <span className="text-emerald-600 text-[8px] font-bold mt-0.5">
-                  জমা: ৳{Utils.toCleanString(selectedPaidSum)}
-                </span>
-              )}
             </div>
-          </div>
-
-          <div className="flex flex-col items-end mt-1.5">
-            {isDue ? (
-              <span className="text-xs font-bold text-[#DC2626] bg-red-50 px-2 py-0.5 rounded-md whitespace-nowrap">
-                বকেয়া: ৳{Utils.toCleanString(groupedHisab.totalDue)}
-              </span>
-            ) : (
-              <span className="text-xs font-bold text-[#16A34A] bg-emerald-50 px-2 py-0.5 rounded-md whitespace-nowrap">
-                পরিশোধিত: ৳{Utils.toCleanString(groupedHisab.totalDue)}
-              </span>
-            )}
-            {selectedItems.length > 0 && (
-              <span className="text-rose-600 text-[8px] font-bold mt-0.5 px-1">
-                বকেয়া: ৳{Utils.toCleanString(selectedDueSum)}
-              </span>
-            )}
           </div>
         </div>
 

@@ -127,11 +127,11 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
   };
 
   // Overall sums directly from Database Query or fallback
-  const totalBill = totals?.totalBill ?? groupedList.reduce((acc, g) => acc + g.totalBill, 0);
-  const totalPaid = totals?.totalPaid ?? groupedList.reduce((acc, g) => acc + g.totalPaid, 0);
-  const totalDue = totals?.totalDue ?? groupedList.reduce((acc, g) => acc + g.totalDue, 0);
-  const totalQty = totals?.totalQty ?? groupedList.reduce((acc, g) => acc + (g.totalQty || 0), 0);
-  const totalDateCount = totals?.dateCount ?? (() => {
+  const dbTotalBill = totals?.totalBill ?? groupedList.reduce((acc, g) => acc + g.totalBill, 0);
+  const dbTotalPaid = totals?.totalPaid ?? groupedList.reduce((acc, g) => acc + g.totalPaid, 0);
+  const dbTotalDue = totals?.totalDue ?? groupedList.reduce((acc, g) => acc + g.totalDue, 0);
+  const dbTotalQty = totals?.totalQty ?? groupedList.reduce((acc, g) => acc + (g.totalQty || 0), 0);
+  const dbTotalDateCount = totals?.dateCount ?? (() => {
     const dates = new Set<string>();
     groupedList.forEach(g => {
       if (g.date) dates.add(g.date);
@@ -139,6 +139,37 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
     });
     return dates.size;
   })();
+
+  // Calculate selected totals
+  const selectedTotals = useMemo(() => {
+    if (selectedItemIds.size === 0) return null;
+    let bill = 0;
+    let paid = 0;
+    let due = 0;
+    let qty = 0;
+    const dates = new Set<string>();
+
+    groupedList.forEach(group => {
+      group.items.forEach(item => {
+        if (selectedItemIds.has(item.id)) {
+          bill += item.bill || 0;
+          paid += item.paid || 0;
+          due += item.due || 0;
+          qty += item.qty || 0;
+          if (item.date) dates.add(item.date);
+        }
+      });
+    });
+
+    return { bill, paid, due, qty, dateCount: dates.size };
+  }, [groupedList, selectedItemIds]);
+
+  const isSelectionActive = selectedItemIds.size > 0;
+  const totalBill = isSelectionActive ? selectedTotals!.bill : dbTotalBill;
+  const totalPaid = isSelectionActive ? selectedTotals!.paid : dbTotalPaid;
+  const totalDue = isSelectionActive ? selectedTotals!.due : dbTotalDue;
+  const totalQty = isSelectionActive ? selectedTotals!.qty : dbTotalQty;
+  const totalDateCount = isSelectionActive ? selectedTotals!.dateCount : dbTotalDateCount;
 
   // Progressive infinite scroll handler
   const handleScroll = useCallback((e: React.UIEvent<HTMLElement>) => {
@@ -157,29 +188,32 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
     return groupedList.slice(0, visibleCount);
   }, [groupedList, visibleCount]);
 
-  const isSingleViewActive = Boolean(customerFilter || dateFilter);
 
   return (
     <div className="h-screen h-[100dvh] bg-[#E1E8EF] flex flex-col max-w-xl sm:max-w-2xl mx-auto shadow-xl relative overflow-hidden">
       {/* Top Header & Filters Fixed */}
-      {!isSingleViewActive && (
-        <div className="shrink-0 z-30 shadow-xs">
-          <HeaderSummary
-            totalBill={totalBill}
-            totalPaid={totalPaid}
-            totalDue={totalDue}
-            totalQty={totalQty}
-            minDate={totals?.minDate}
-            maxDate={totals?.maxDate}
-            dateCount={totalDateCount}
-            ymd={totals?.ymd}
-            onExportPdf={onExportPdf}
-            onShowBackup={onShowBackup}
-            onShowAbout={onShowAbout}
-            onShowAreaMeasurement={onShowAreaMeasurement}
-            onToggleSearch={handleToggleSearch}
-          />
+      <div className="shrink-0 z-30 shadow-xs">
+        <HeaderSummary
+          totalBill={totalBill}
+          totalPaid={totalPaid}
+          totalDue={totalDue}
+          totalQty={totalQty}
+          minDate={isSelectionActive ? undefined : totals?.minDate}
+          maxDate={isSelectionActive ? undefined : totals?.maxDate}
+          dateCount={totalDateCount}
+          ymd={isSelectionActive ? undefined : totals?.ymd}
+          onExportPdf={onExportPdf}
+          onShowBackup={onShowBackup}
+          onShowAbout={onShowAbout}
+          onShowAreaMeasurement={onShowAreaMeasurement}
+          onToggleSearch={handleToggleSearch}
+          isSelectionActive={isSelectionActive}
+          selectedCount={selectedItemIds.size}
+          onClearSelection={() => setSelectedItemIds(new Set())}
+          showTopRow={!customerFilter && !dateFilter}
+        />
 
+        {!customerFilter && !dateFilter && (
           <div className="bg-[#E1E8EF] pb-2 pt-1 border-b border-slate-200/60">
             {isSearchOpen && (
               <DashboardSearchBar
@@ -201,8 +235,13 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
               isFilterModalOpen={isFilterModalOpen}
               onFilterModalOpenChange={setIsFilterModalOpen}
             />
+          </div>
+        )}
 
-          {/* Active Filter Chips / Indicators */}
+        <div className="bg-[#E1E8EF]">
+          {!customerFilter && !dateFilter && (
+            <>
+              {/* Active Filter Chips / Indicators */}
           {(advancedFilter.startDate ||
             advancedFilter.endDate ||
             (advancedFilter.datePreset && advancedFilter.datePreset !== 'all') ||
@@ -212,7 +251,7 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
             advancedFilter.mobile ||
             advancedFilter.address ||
             (advancedFilter.sortBy && advancedFilter.sortBy !== 'date') ||
-            (advancedFilter.sortOrder && advancedFilter.sortOrder !== 'asc')) && (
+            (advancedFilter.sortOrder && advancedFilter.sortOrder !== 'desc')) && (
             <div className="mx-2 sm:mx-3 mt-1.5 px-2.5 py-1.5 bg-blue-50/90 border border-blue-200 rounded-lg flex items-center justify-between shadow-2xs gap-2">
               <div className="flex items-center gap-1.5 flex-wrap min-w-0">
                 <span className="p-1 bg-blue-700 text-white rounded-md shrink-0 flex items-center justify-center">
@@ -220,7 +259,7 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
                 </span>
 
                 {/* Sort Chip */}
-                {((advancedFilter.sortBy && advancedFilter.sortBy !== 'date') || (advancedFilter.sortOrder && advancedFilter.sortOrder !== 'asc')) && (
+                {((advancedFilter.sortBy && advancedFilter.sortBy !== 'date') || (advancedFilter.sortOrder && advancedFilter.sortOrder !== 'desc')) && (
                   <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 text-[10px] font-semibold border border-amber-300">
                     <ArrowUpDown size={10} />
                     <span>
@@ -246,7 +285,7 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
                         onAdvancedFilterChange?.({
                           ...advancedFilter,
                           sortBy: 'date',
-                          sortOrder: 'asc'
+                          sortOrder: 'desc'
                         })
                       }
                       className="hover:text-red-700 ml-0.5"
@@ -383,11 +422,13 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
                 <span>রিসেট</span>
               </button>
             </div>
+              )}
+            </>
           )}
 
           {/* Active Customer Filter Indicator */}
           {customerFilter && (
-            <div className="mx-2 sm:mx-3 mt-1.5 px-2.5 py-1.5 bg-emerald-50 border border-emerald-300 rounded-lg flex items-center justify-between shadow-2xs">
+            <div className="mx-2 sm:mx-3 mt-1.5 px-2.5 py-1.5 bg-emerald-50 border border-emerald-300 rounded-lg flex items-center justify-between shadow-2xs gap-2">
               <div className="flex items-center space-x-1.5 min-w-0">
                 <span className="p-1 bg-emerald-700 text-white rounded-md shrink-0">
                   <UserCheck size={12} />
@@ -410,7 +451,30 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
               <button
                 type="button"
                 onClick={onClearCustomerFilter}
-                className="ml-2 px-1.5 py-0.5 text-emerald-800 hover:text-red-700 hover:bg-red-50 rounded transition-colors shrink-0 flex items-center space-x-0.5 text-[11px] font-bold cursor-pointer"
+                className="ml-auto px-1.5 py-0.5 text-emerald-800 hover:text-red-700 hover:bg-red-50 rounded transition-colors shrink-0 flex items-center space-x-0.5 text-[11px] font-bold cursor-pointer"
+                title="ফিল্টার বাতিল করুন"
+              >
+                <X size={13} />
+                <span>রিসেট</span>
+              </button>
+            </div>
+          )}
+
+          {/* Active Date Filter Indicator */}
+          {dateFilter && (
+            <div className="mx-2 sm:mx-3 mt-1.5 px-2.5 py-1.5 bg-amber-50 border border-amber-300 rounded-lg flex items-center justify-between shadow-2xs gap-2">
+              <div className="flex items-center space-x-1.5 min-w-0">
+                <span className="p-1 bg-amber-700 text-white rounded-md shrink-0">
+                  <Calendar size={12} />
+                </span>
+                <div className="text-[11px] sm:text-xs text-amber-950 font-bold">
+                  {dateFilter.date}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={onClearDateFilter}
+                className="ml-auto px-1.5 py-0.5 text-amber-800 hover:text-red-700 hover:bg-red-50 rounded transition-colors shrink-0 flex items-center space-x-0.5 text-[11px] font-bold cursor-pointer"
                 title="ফিল্টার বাতিল করুন"
               >
                 <X size={13} />
@@ -421,7 +485,6 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
 
         </div>
       </div>
-    )}
 
       {/* Scrollable Data Cards with High Performance Progressive Rendering */}
       <main
@@ -478,9 +541,9 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
       {!isFilterModalOpen && (
         <button
           onClick={onAddNewClick}
-          className="absolute bottom-6 right-6 bg-[#1B5E20] text-white px-5 py-3.5 rounded-full shadow-2xl hover:bg-emerald-900 active:scale-95 transition-all flex items-center space-x-2 font-bold text-sm z-30 border border-emerald-400/30"
+          className="absolute bottom-6 right-6 bg-[#1B5E20] text-white px-4 py-2.5 rounded-full shadow-2xl hover:bg-emerald-900 active:scale-95 transition-all flex items-center space-x-1.5 font-bold text-[13px] z-30 border border-emerald-400/30"
         >
-          <Plus size={20} />
+          <Plus size={18} />
           <span>নতুন হিসাব</span>
         </button>
       )}

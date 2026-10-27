@@ -48,7 +48,9 @@ export const GroupChildItemRow: React.FC<GroupChildItemRowProps> = ({
   const isDue = (item.due || 0) > 0;
 
   // Rich, attractive gradient styling for child card
-  const childCardTheme = isHighlighted
+  const childCardTheme = isSelected
+    ? 'bg-gradient-to-br from-amber-50 via-white to-amber-100 border-amber-400 shadow-md ring-2 ring-amber-500/30'
+    : isHighlighted
     ? 'animate-blur-float ring-4 ring-blue-400 bg-gradient-to-br from-blue-50 via-white to-indigo-50 border-blue-400 shadow-md'
     : isDue
     ? 'bg-gradient-to-br from-[#FFFFFF] via-[#FFF9F9] to-[#FFE4E6]/50 border-rose-300/80 shadow-[0_2px_10px_-2px_rgba(244,63,94,0.14)] hover:border-rose-400 hover:shadow-md'
@@ -86,20 +88,10 @@ export const GroupChildItemRow: React.FC<GroupChildItemRowProps> = ({
             >
               <span>📅 {item.date}</span>
               <Filter size={10} className="text-slate-400 group-hover:text-blue-700 transition-colors shrink-0" />
-              {item.hisabType && (
-                <span className="text-[10px] font-bold text-teal-800 bg-gradient-to-r from-teal-50 to-emerald-100/90 px-2 py-0.5 rounded-md border border-teal-300/70 shadow-2xs ml-1">
-                  {item.hisabType}
-                </span>
-              )}
             </button>
           ) : (
             <span className="text-xs font-bold text-slate-800 break-words whitespace-normal inline-flex items-center gap-1.5">
               <span>{mode === GroupByMode.BY_DATE_WORK ? '👤 নাম ছাড়া' : `📅 ${item.date}`}</span>
-              {item.hisabType && (
-                <span className="text-[10px] font-bold text-teal-800 bg-gradient-to-r from-teal-50 to-emerald-100/90 px-2 py-0.5 rounded-md border border-teal-300/70 shadow-2xs">
-                  {item.hisabType}
-                </span>
-              )}
             </span>
           )}
           {mode === GroupByMode.BY_DATE_WORK && (item.mobile || item.address) && (
@@ -167,7 +159,7 @@ export const GroupChildItemRow: React.FC<GroupChildItemRowProps> = ({
         )}
       </div>
 
-      <div className={`flex items-center justify-between text-xs font-semibold text-slate-800 mt-2.5 pt-2 border-t ${isDue ? 'border-rose-100' : 'border-emerald-100'} px-0.5`}>
+      <div className={`flex items-center justify-between text-[10.5px] font-semibold text-slate-800 mt-2 pt-1.5 border-t ${isDue ? 'border-rose-100' : 'border-emerald-100'} px-0.5`}>
         <span>
           বিল: <span className="font-bold text-slate-900">৳{Utils.toCleanString(item.bill)}</span>
         </span>
@@ -176,11 +168,11 @@ export const GroupChildItemRow: React.FC<GroupChildItemRowProps> = ({
         </span>
         <span>
           {isDue ? (
-            <span className="text-xs font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md whitespace-nowrap inline-block shadow-2xs">
+            <span className="text-[9.5px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-1.5 py-0.2 rounded-md whitespace-nowrap inline-block shadow-2xs">
               বকেয়া: ৳{Utils.toCleanString(item.due)}
             </span>
           ) : (
-            <span className="text-xs font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md whitespace-nowrap inline-block shadow-2xs">
+            <span className="text-[9.5px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded-md whitespace-nowrap inline-block shadow-2xs">
               পরিশোধিত: ৳{Utils.toCleanString(item.due)}
             </span>
           )}

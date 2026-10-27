@@ -629,7 +629,7 @@ export class HisabStorage {
   public static async getAll(): Promise<VehicleHisab[]> {
     const db = await getSqliteDb();
     const result: VehicleHisab[] = [];
-    const stmt = db.prepare('SELECT * FROM hisab ORDER BY date ASC, id ASC');
+    const stmt = db.prepare('SELECT * FROM hisab ORDER BY date DESC, id DESC');
     while (stmt.step()) {
       result.push(stmt.getAsObject() as unknown as VehicleHisab);
     }
@@ -1098,7 +1098,7 @@ export class HisabStorage {
 
     // 3. Pure SQL: GROUP BY Query with SUM Aggregates & COUNT (Dynamic Sort)
     const sortBy = advancedFilter?.sortBy || 'date';
-    const sortOrder = (advancedFilter?.sortOrder || 'asc').toUpperCase();
+    const sortOrder = (advancedFilter?.sortOrder || 'desc').toUpperCase();
 
     let groupOrderBy = '';
     if (isUserDetails) {
@@ -1115,7 +1115,7 @@ export class HisabStorage {
       } else if (sortBy === 'due') {
         groupOrderBy = `totalDue ${sortOrder}, MIN(date) ASC`;
       } else {
-        groupOrderBy = 'MIN(date) ASC, MIN(id) ASC';
+        groupOrderBy = 'MAX(date) DESC, MAX(id) DESC';
       }
     } else {
       if (sortBy === 'id') {
@@ -1131,7 +1131,7 @@ export class HisabStorage {
       } else if (sortBy === 'due') {
         groupOrderBy = `totalDue ${sortOrder}, date ASC`;
       } else {
-        groupOrderBy = 'date ASC, MIN(id) ASC';
+        groupOrderBy = 'date DESC, MIN(id) DESC';
       }
     }
 
@@ -1304,7 +1304,7 @@ export class HisabStorage {
     } else if (sortBy === 'due') {
       childOrderBy = `due ${sortOrder}, date ASC, id ASC`;
     } else {
-      childOrderBy = 'date ASC, id ASC';
+      childOrderBy = 'date DESC, id DESC';
     }
 
     const childSql = `

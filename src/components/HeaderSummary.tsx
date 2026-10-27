@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { MoreVertical, FileText, Info, HardDrive, Search, ChevronDown, Check, Calculator, Ruler } from 'lucide-react';
+import { MoreVertical, FileText, Info, HardDrive, Search, ChevronDown, Check, Calculator, Ruler, X } from 'lucide-react';
 import { Utils } from '../util/utils';
 
 import appLogo from '../assets/images/app_logo.svg';
@@ -20,6 +20,10 @@ interface HeaderSummaryProps {
   onShowAbout: () => void;
   onShowAreaMeasurement?: () => void;
   onToggleSearch: () => void;
+  isSelectionActive?: boolean;
+  selectedCount?: number;
+  onClearSelection?: () => void;
+  showTopRow?: boolean;
 }
 
 export const HeaderSummary: React.FC<HeaderSummaryProps> = ({
@@ -35,7 +39,11 @@ export const HeaderSummary: React.FC<HeaderSummaryProps> = ({
   onShowBackup,
   onShowAbout,
   onShowAreaMeasurement,
-  onToggleSearch
+  onToggleSearch,
+  isSelectionActive = false,
+  selectedCount = 0,
+  onClearSelection,
+  showTopRow = true
 }) => {
   const [showMenu, setShowMenu] = useState(false);
   const [showQtyMenu, setShowQtyMenu] = useState(false);
@@ -108,110 +116,129 @@ export const HeaderSummary: React.FC<HeaderSummaryProps> = ({
   return (
     <header className="bg-[#1B5E20] text-white px-3 sm:px-4 pt-2.5 pb-2 shadow-md sticky top-0 z-45 flex flex-col gap-2 w-full max-w-full">
       {/* Top Row: App Logo, Title & Action Buttons */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center space-x-2 shrink-0">
-          <img
-            src={appLogo}
-            alt="App Icon"
-            referrerPolicy="no-referrer"
-            className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg object-cover border border-emerald-300/40 shadow-xs shrink-0"
-          />
-          <h1 className="text-base sm:text-lg font-bold tracking-wide text-white drop-shadow-xs">
-            Hisab Book
-          </h1>
-        </div>
-
-        {/* Top Right Quick Actions */}
-        <div className="flex items-center space-x-1 shrink-0">
-          <button
-            onClick={onToggleSearch}
-            className="p-1.5 rounded-full hover:bg-white/15 text-emerald-100 hover:text-white transition-colors"
-            title="খুঁজুন / Search"
-          >
-            <Search size={18} />
-          </button>
-
-          <div className="relative">
-            <button
-              onClick={() => setShowMenu(!showMenu)}
-              className="p-1.5 rounded-full hover:bg-white/15 text-emerald-100 hover:text-white transition-colors"
-              title="More Options"
-            >
-              <MoreVertical size={18} />
-            </button>
-
-            {showMenu && (
-              <>
-                <div
-                  className="fixed inset-0 z-40"
-                  onClick={() => setShowMenu(false)}
-                ></div>
-                <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-xl border border-slate-100 z-50 text-slate-800 text-sm overflow-hidden py-1">
+      {showTopRow && (
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center space-x-2 shrink-0">
+            <img
+              src={appLogo}
+              alt="App Icon"
+              referrerPolicy="no-referrer"
+              className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg object-cover border border-emerald-300/40 shadow-xs shrink-0"
+            />
+            <div className="flex flex-col">
+              <h1 className="text-base sm:text-lg font-bold tracking-wide text-white drop-shadow-xs leading-none">
+                Hisab Book
+              </h1>
+              {isSelectionActive && (
+                <div className="flex items-center gap-1 mt-0.5 animate-in fade-in slide-in-from-left-2 duration-200">
+                  <span className="bg-amber-400 text-amber-950 px-1.5 py-0.2 rounded-md text-[9px] font-black uppercase tracking-tighter flex items-center gap-0.5 shadow-xs border border-amber-200/50">
+                    <Check size={8} strokeWidth={4} />
+                    নির্বাচিত ({selectedCount})
+                  </span>
                   <button
-                    onClick={() => {
-                      setShowMenu(false);
-                      onToggleSearch();
-                    }}
-                    className="w-full px-4 py-2.5 text-left flex items-center space-x-3 hover:bg-slate-50 transition-colors"
+                    onClick={onClearSelection}
+                    className="bg-white/10 hover:bg-white/20 text-white p-0.5 rounded transition-colors"
+                    title="সিলেকশন মুছুন"
                   >
-                    <Search size={16} className="text-slate-500" />
-                    <span>খুঁজুন / সার্চ</span>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setShowMenu(false);
-                      onShowAreaMeasurement?.();
-                    }}
-                    className="w-full px-4 py-2.5 text-left flex items-center space-x-3 hover:bg-emerald-50 text-emerald-900 font-medium transition-colors"
-                  >
-                    <Ruler size={16} className="text-[#1B5E20]" />
-                    <span>জমি বা মাঠের পরিমাপ (Area Measurement)</span>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setShowMenu(false);
-                      onExportPdf();
-                    }}
-                    className="w-full px-4 py-2.5 text-left flex items-center space-x-3 hover:bg-slate-50 transition-colors"
-                  >
-                    <FileText size={16} className="text-slate-500" />
-                    <span>রিপোর্ট এক্সপোর্ট (PDF)</span>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setShowMenu(false);
-                      onShowBackup();
-                    }}
-                    className="w-full px-4 py-2.5 text-left flex items-center space-x-3 hover:bg-[#1B5E20]/5 text-[#1B5E20] font-medium transition-colors"
-                  >
-                    <HardDrive size={16} className="text-[#1B5E20]" />
-                    <span>ডাটা ব্যাকআপ ও রিস্টোর</span>
-                  </button>
-
-                  <div className="my-1 border-t border-slate-100"></div>
-
-                  <button
-                    onClick={() => {
-                      setShowMenu(false);
-                      onShowAbout();
-                    }}
-                    className="w-full px-4 py-2.5 text-left flex items-center space-x-3 hover:bg-slate-50 transition-colors"
-                  >
-                    <Info size={16} className="text-slate-500" />
-                    <span>অ্যাপ সম্পর্কে</span>
+                    <X size={10} className="stroke-[3]" />
                   </button>
                 </div>
-              </>
-            )}
+              )}
+            </div>
+          </div>
+
+          {/* Top Right Quick Actions */}
+          <div className="flex items-center space-x-1 shrink-0">
+            <button
+              onClick={onToggleSearch}
+              className="p-1.5 rounded-full hover:bg-white/15 text-emerald-100 hover:text-white transition-colors"
+              title="খুঁজুন / Search"
+            >
+              <Search size={18} />
+            </button>
+
+            <div className="relative">
+              <button
+                onClick={() => setShowMenu(!showMenu)}
+                className="p-1.5 rounded-full hover:bg-white/15 text-emerald-100 hover:text-white transition-colors"
+                title="More Options"
+              >
+                <MoreVertical size={18} />
+              </button>
+
+              {showMenu && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setShowMenu(false)}
+                  ></div>
+                  <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-xl border border-slate-100 z-50 text-slate-800 text-sm overflow-hidden py-1">
+                    <button
+                      onClick={() => {
+                        setShowMenu(false);
+                        onToggleSearch();
+                      }}
+                      className="w-full px-4 py-2.5 text-left flex items-center space-x-3 hover:bg-slate-50 transition-colors"
+                    >
+                      <Search size={16} className="text-slate-500" />
+                      <span>খুঁজুন / সার্চ</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setShowMenu(false);
+                        onShowAreaMeasurement?.();
+                      }}
+                      className="w-full px-4 py-2.5 text-left flex items-center space-x-3 hover:bg-emerald-50 text-emerald-900 font-medium transition-colors"
+                    >
+                      <Ruler size={16} className="text-[#1B5E20]" />
+                      <span>জমি বা মাঠের পরিমাপ (Area Measurement)</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setShowMenu(false);
+                        onExportPdf();
+                      }}
+                      className="w-full px-4 py-2.5 text-left flex items-center space-x-3 hover:bg-slate-50 transition-colors"
+                    >
+                      <FileText size={16} className="text-slate-500" />
+                      <span>রিপোর্ট এক্সপোর্ট (PDF)</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setShowMenu(false);
+                        onShowBackup();
+                      }}
+                      className="w-full px-4 py-2.5 text-left flex items-center space-x-3 hover:bg-[#1B5E20]/5 text-[#1B5E20] font-medium transition-colors"
+                    >
+                      <HardDrive size={16} className="text-[#1B5E20]" />
+                      <span>ডাটা ব্যাকআপ ও রিস্টোর</span>
+                    </button>
+
+                    <div className="my-1 border-t border-slate-100"></div>
+
+                    <button
+                      onClick={() => {
+                        setShowMenu(false);
+                        onShowAbout();
+                      }}
+                      className="w-full px-4 py-2.5 text-left flex items-center space-x-3 hover:bg-slate-50 transition-colors"
+                    >
+                      <Info size={16} className="text-slate-500" />
+                      <span>অ্যাপ সম্পর্কে</span>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Bottom Summary Bar: Qty, (YMD), Bill, Paid, Due */}
-      <div className="grid grid-cols-5 items-center bg-emerald-950/50 px-1 sm:px-2 py-1.5 rounded-xl border border-emerald-300/25 text-xs">
+      <div className={`grid grid-cols-5 items-center bg-emerald-950/50 px-1 sm:px-2 py-1.5 rounded-xl border border-emerald-300/25 text-xs transition-all ${isSelectionActive ? 'bg-emerald-900/80 shadow-inner' : ''}`}>
         {/* 1. Total Qty (Clickable with Dropdown for Bigha, YMD, Hour, Trip calculations) */}
         <div className="relative text-center px-0.5 flex flex-col justify-center min-w-0">
           <button
@@ -221,11 +248,11 @@ export const HeaderSummary: React.FC<HeaderSummaryProps> = ({
             className="flex flex-col items-center justify-center w-full py-0.5 rounded-lg hover:bg-white/10 active:bg-white/20 transition-all cursor-pointer group"
             title="ক্লিক করে হিসাব রূপান্তর করুন (Bigha, YMD, Hour, Trip)"
           >
-            <div className="flex items-center space-x-0.5 text-[10px] text-emerald-200/90 font-medium leading-tight">
-              <span>Qty{modeLabel ? ` (${modeLabel})` : ''}</span>
-              <ChevronDown size={10} className="text-emerald-300 opacity-70 group-hover:opacity-100 transition-opacity shrink-0" />
+            <div className={`flex items-center space-x-0.5 text-[9px] text-emerald-200/90 font-medium leading-tight ${isSelectionActive ? 'text-amber-200/90' : ''}`}>
+              <span>পরিমাণ{modeLabel ? ` (${modeLabel})` : ''}</span>
+              <ChevronDown size={8} className="text-emerald-300 opacity-70 group-hover:opacity-100 transition-opacity shrink-0" />
             </div>
-            <div className="font-bold text-[#A7F3D0] text-[10.5px] sm:text-[12px] leading-tight break-words whitespace-normal max-w-full">
+            <div className={`font-bold text-[#A7F3D0] leading-tight break-words whitespace-normal max-w-full ${isSelectionActive ? 'text-[9.5px] sm:text-[11px]' : 'text-[10px] sm:text-[11.5px]'}`}>
               {formattedQtyDisplay}
             </div>
           </button>
@@ -234,10 +261,10 @@ export const HeaderSummary: React.FC<HeaderSummaryProps> = ({
           {showQtyMenu && (
             <>
               <div
-                className="fixed inset-0 z-50"
+                className="fixed inset-0 z-55"
                 onClick={() => setShowQtyMenu(false)}
               ></div>
-              <div className="absolute left-0 sm:left-auto top-full mt-2 w-52 sm:w-56 bg-white rounded-2xl shadow-2xl border border-slate-200 z-55 text-slate-800 text-xs overflow-hidden py-1.5 animate-in fade-in zoom-in-95 duration-150 text-left">
+              <div className="absolute left-0 sm:left-auto top-full mt-2 w-52 sm:w-56 bg-white rounded-2xl shadow-2xl border border-slate-200 z-60 text-slate-800 text-xs overflow-hidden py-1.5 animate-in fade-in zoom-in-95 duration-150 text-left">
                 <div className="px-3 py-1.5 border-b border-slate-100 font-bold text-slate-500 text-[10px] uppercase tracking-wider flex items-center justify-between">
                   <span>Qty হিসাব / রূপান্তর</span>
                   <Calculator size={13} className="text-[#1B5E20]" />
@@ -367,34 +394,34 @@ export const HeaderSummary: React.FC<HeaderSummaryProps> = ({
               : 'তারিখের পরিসীমা (YMD)'
           }
         >
-          <div className="text-[10px] text-emerald-200/90 font-medium leading-tight whitespace-nowrap">
-            (YMD)
+          <div className={`text-[9px] text-emerald-200/90 font-medium leading-tight whitespace-nowrap ${isSelectionActive ? 'text-amber-200/90' : ''}`}>
+            দিন (YMD)
           </div>
-          <div className="font-bold text-[#FED7AA] text-[10.5px] sm:text-[12px] leading-tight break-words whitespace-normal">
+          <div className={`font-bold text-[#FED7AA] leading-tight break-words whitespace-normal ${isSelectionActive ? 'text-[9.5px] sm:text-[11px]' : 'text-[10px] sm:text-[11.5px]'}`}>
             {displayYMD}
           </div>
         </div>
 
         {/* 3. Total Bill */}
         <div className="text-center px-0.5 flex flex-col justify-center min-w-0 border-l border-white/20">
-          <div className="text-[10px] text-emerald-200/90 font-medium leading-tight">Bill</div>
-          <div className="font-bold text-white text-[11px] sm:text-[12.5px] leading-tight break-words whitespace-normal">
+          <div className={`text-[9px] text-emerald-200/90 font-medium leading-tight ${isSelectionActive ? 'text-amber-200/90' : ''}`}>বিল</div>
+          <div className={`font-bold text-white leading-tight break-words whitespace-normal ${isSelectionActive ? 'text-[10px] sm:text-[11px]' : 'text-[10px] sm:text-[11.5px]'}`}>
             ৳{Utils.toCleanString(totalBill)}
           </div>
         </div>
 
         {/* 4. Total Paid */}
         <div className="text-center px-0.5 flex flex-col justify-center min-w-0 border-l border-white/20">
-          <div className="text-[10px] text-emerald-200/90 font-medium leading-tight">Paid</div>
-          <div className="font-bold text-[#69F0AE] text-[11px] sm:text-[12.5px] leading-tight break-words whitespace-normal">
+          <div className={`text-[9px] text-emerald-200/90 font-medium leading-tight ${isSelectionActive ? 'text-amber-200/90' : ''}`}>জমা</div>
+          <div className={`font-bold text-[#69F0AE] leading-tight break-words whitespace-normal ${isSelectionActive ? 'text-[10px] sm:text-[11px]' : 'text-[10px] sm:text-[11.5px]'}`}>
             ৳{Utils.toCleanString(totalPaid)}
           </div>
         </div>
 
         {/* 5. Total Due */}
         <div className="text-center px-0.5 flex flex-col justify-center min-w-0 border-l border-white/20">
-          <div className="text-[10px] text-emerald-200/90 font-medium leading-tight">Due</div>
-          <div className="font-bold text-[#FF8A80] text-[11px] sm:text-[12.5px] leading-tight break-words whitespace-normal">
+          <div className={`text-[9px] text-emerald-200/90 font-medium leading-tight ${isSelectionActive ? 'text-amber-200/90' : ''}`}>বকেয়া</div>
+          <div className={`font-bold text-[#FF8A80] leading-tight break-words whitespace-normal ${isSelectionActive ? 'text-[10px] sm:text-[11px]' : 'text-[10px] sm:text-[11.5px]'}`}>
             ৳{Utils.toCleanString(totalDue)}
           </div>
         </div>

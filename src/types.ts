@@ -120,7 +120,7 @@ export const initialAdvancedFilterState: AdvancedFilterState = {
   hisabType: '',
   paymentStatus: 'all',
   sortBy: 'date',
-  sortOrder: 'asc'
+  sortOrder: 'desc'
 };
 
 export interface HisabQueryResult {
