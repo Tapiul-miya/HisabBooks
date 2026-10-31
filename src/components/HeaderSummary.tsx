@@ -11,6 +11,10 @@ interface HeaderSummaryProps {
   totalPaid: number;
   totalDue: number;
   totalQty?: number;
+  totalSpend?: number;
+  totalProfit?: number;
+  totalCashout?: number;
+  totalCredit?: number;
   minDate?: string;
   maxDate?: string;
   dateCount?: number;
@@ -31,6 +35,10 @@ export const HeaderSummary: React.FC<HeaderSummaryProps> = ({
   totalPaid,
   totalDue,
   totalQty = 0,
+  totalSpend = 0,
+  totalProfit = 0,
+  totalCashout = 0,
+  totalCredit = 0,
   minDate,
   maxDate,
   dateCount,
@@ -114,7 +122,7 @@ export const HeaderSummary: React.FC<HeaderSummaryProps> = ({
   }, [ymd, dateCount, minDate, maxDate]);
 
   return (
-    <header className="bg-[#1B5E20] text-white px-3 sm:px-4 pt-2.5 pb-2 shadow-md sticky top-0 z-45 flex flex-col gap-2 w-full max-w-full">
+    <header className="bg-[#1B5E20] text-white px-3 sm:px-4 pt-1.5 pb-1 shadow-md sticky top-0 z-45 flex flex-col gap-1.5 w-full max-w-full">
       {/* Top Row: App Logo, Title & Action Buttons */}
       {showTopRow && (
         <div className="flex items-center justify-between gap-2">
@@ -237,192 +245,214 @@ export const HeaderSummary: React.FC<HeaderSummaryProps> = ({
         </div>
       )}
 
-      {/* Bottom Summary Bar: Qty, (YMD), Bill, Paid, Due */}
-      <div className={`grid grid-cols-5 items-center bg-emerald-950/50 px-1 sm:px-2 py-1.5 rounded-xl border border-emerald-300/25 text-xs transition-all ${isSelectionActive ? 'bg-emerald-900/80 shadow-inner' : ''}`}>
-        {/* 1. Total Qty (Clickable with Dropdown for Bigha, YMD, Hour, Trip calculations) */}
-        <div className="relative text-center px-0.5 flex flex-col justify-center min-w-0">
-          <button
-            type="button"
-            id="qty-calculation-trigger-btn"
-            onClick={() => setShowQtyMenu((prev) => !prev)}
-            className="flex flex-col items-center justify-center w-full py-0.5 rounded-lg hover:bg-white/10 active:bg-white/20 transition-all cursor-pointer group"
-            title="ক্লিক করে হিসাব রূপান্তর করুন (Bigha, YMD, Hour, Trip)"
-          >
-            <div className={`flex items-center space-x-0.5 text-[9px] text-emerald-200/90 font-medium leading-tight ${isSelectionActive ? 'text-amber-200/90' : ''}`}>
-              <span>পরিমাণ{modeLabel ? ` (${modeLabel})` : ''}</span>
-              <ChevronDown size={8} className="text-emerald-300 opacity-70 group-hover:opacity-100 transition-opacity shrink-0" />
-            </div>
-            <div className={`font-bold text-[#A7F3D0] leading-tight break-words whitespace-normal max-w-full ${isSelectionActive ? 'text-[9.5px] sm:text-[11px]' : 'text-[10px] sm:text-[11.5px]'}`}>
-              {formattedQtyDisplay}
-            </div>
-          </button>
-
-          {/* Qty Calculation Mode Selection Menu */}
-          {showQtyMenu && (
-            <>
-              <div
-                className="fixed inset-0 z-55"
-                onClick={() => setShowQtyMenu(false)}
-              ></div>
-              <div className="absolute left-0 sm:left-auto top-full mt-2 w-52 sm:w-56 bg-white rounded-2xl shadow-2xl border border-slate-200 z-60 text-slate-800 text-xs overflow-hidden py-1.5 animate-in fade-in zoom-in-95 duration-150 text-left">
-                <div className="px-3 py-1.5 border-b border-slate-100 font-bold text-slate-500 text-[10px] uppercase tracking-wider flex items-center justify-between">
-                  <span>Qty হিসাব / রূপান্তর</span>
-                  <Calculator size={13} className="text-[#1B5E20]" />
-                </div>
-
-                {/* Option 1: Bigha */}
-                <button
-                  type="button"
-                  id="calc-bigha-option"
-                  onClick={() => {
-                    setQtyMode('bigha');
-                    localStorage.setItem('hisab_qty_mode', 'bigha');
-                    setShowQtyMenu(false);
-                  }}
-                  className={`w-full px-3 py-2 text-left flex items-center justify-between hover:bg-emerald-50 transition-colors ${
-                    qtyMode === 'bigha' ? 'bg-emerald-50 font-bold text-[#1B5E20]' : 'text-slate-700'
-                  }`}
-                >
-                  <div className="flex items-center space-x-2">
-                    <span className="text-base">🌾</span>
-                    <div>
-                      <div className="font-semibold text-xs">Calculate Bigha</div>
-                      <div className="text-[10px] text-slate-500">বিঘা-কাঠা (২০ কাঠা = ১ বিঘা)</div>
-                    </div>
-                  </div>
-                  {qtyMode === 'bigha' && <Check size={14} className="text-[#1B5E20] shrink-0" />}
-                </button>
-
-                {/* Option 2: YMD */}
-                <button
-                  type="button"
-                  id="calc-ymd-option"
-                  onClick={() => {
-                    setQtyMode('ymd');
-                    localStorage.setItem('hisab_qty_mode', 'ymd');
-                    setShowQtyMenu(false);
-                  }}
-                  className={`w-full px-3 py-2 text-left flex items-center justify-between hover:bg-emerald-50 transition-colors ${
-                    qtyMode === 'ymd' ? 'bg-emerald-50 font-bold text-[#1B5E20]' : 'text-slate-700'
-                  }`}
-                >
-                  <div className="flex items-center space-x-2">
-                    <span className="text-base">📅</span>
-                    <div>
-                      <div className="font-semibold text-xs">Calculate YMD</div>
-                      <div className="text-[10px] text-slate-500">বছর-মাস-দিন ({displayYMD})</div>
-                    </div>
-                  </div>
-                  {qtyMode === 'ymd' && <Check size={14} className="text-[#1B5E20] shrink-0" />}
-                </button>
-
-                {/* Option 3: Hour */}
-                <button
-                  type="button"
-                  id="calc-hour-option"
-                  onClick={() => {
-                    setQtyMode('hour');
-                    localStorage.setItem('hisab_qty_mode', 'hour');
-                    setShowQtyMenu(false);
-                  }}
-                  className={`w-full px-3 py-2 text-left flex items-center justify-between hover:bg-emerald-50 transition-colors ${
-                    qtyMode === 'hour' ? 'bg-emerald-50 font-bold text-[#1B5E20]' : 'text-slate-700'
-                  }`}
-                >
-                  <div className="flex items-center space-x-2">
-                    <span className="text-base">⏱️</span>
-                    <div>
-                      <div className="font-semibold text-xs">Calculate Hour</div>
-                      <div className="text-[10px] text-slate-500">ঘণ্টা-মিনিট (00H:00M)</div>
-                    </div>
-                  </div>
-                  {qtyMode === 'hour' && <Check size={14} className="text-[#1B5E20] shrink-0" />}
-                </button>
-
-                {/* Option 4: Trip */}
-                <button
-                  type="button"
-                  id="calc-trip-option"
-                  onClick={() => {
-                    setQtyMode('trip');
-                    localStorage.setItem('hisab_qty_mode', 'trip');
-                    setShowQtyMenu(false);
-                  }}
-                  className={`w-full px-3 py-2 text-left flex items-center justify-between hover:bg-emerald-50 transition-colors ${
-                    qtyMode === 'trip' ? 'bg-emerald-50 font-bold text-[#1B5E20]' : 'text-slate-700'
-                  }`}
-                >
-                  <div className="flex items-center space-x-2">
-                    <span className="text-base">🚛</span>
-                    <div>
-                      <div className="font-semibold text-xs">Calculate Trip</div>
-                      <div className="text-[10px] text-slate-500">মোট ট্রিপ সংখ্যা</div>
-                    </div>
-                  </div>
-                  {qtyMode === 'trip' && <Check size={14} className="text-[#1B5E20] shrink-0" />}
-                </button>
-
-                <div className="my-1 border-t border-slate-100"></div>
-
-                {/* Default Raw Number */}
-                <button
-                  type="button"
-                  id="calc-default-option"
-                  onClick={() => {
-                    setQtyMode('default');
-                    localStorage.setItem('hisab_qty_mode', 'default');
-                    setShowQtyMenu(false);
-                  }}
-                  className={`w-full px-3 py-1.5 text-left flex items-center justify-between hover:bg-slate-50 text-slate-600 transition-colors ${
-                    qtyMode === 'default' ? 'font-bold text-[#1B5E20] bg-slate-50' : ''
-                  }`}
-                >
-                  <span className="text-xs">ডিফল্ট সাধারণ সংখ্যা</span>
-                  {qtyMode === 'default' && <Check size={14} className="text-[#1B5E20] shrink-0" />}
-                </button>
+      <div className="flex flex-col gap-0.5 w-full">
+        {/* Bottom Summary Bar: Qty, (YMD), Bill, Paid, Due */}
+        <div className={`grid grid-cols-5 items-center bg-emerald-950/50 px-1 sm:px-2 py-1 rounded-xl border border-emerald-300/25 text-xs transition-all ${isSelectionActive ? 'bg-emerald-900/80 shadow-inner' : ''}`}>
+          {/* 1. Total Qty (Clickable with Dropdown for Bigha, YMD, Hour, Trip calculations) */}
+          <div className="relative text-center px-0.5 flex flex-col justify-center min-w-0">
+            <button
+              type="button"
+              id="qty-calculation-trigger-btn"
+              onClick={() => setShowQtyMenu((prev) => !prev)}
+              className="flex flex-col items-center justify-center w-full py-0.5 rounded-lg hover:bg-white/10 active:bg-white/20 transition-all cursor-pointer group"
+              title="ক্লিক করে হিসাব রূপান্তর করুন (Bigha, YMD, Hour, Trip)"
+            >
+              <div className={`flex items-center space-x-0.5 text-[9px] text-emerald-200/90 font-medium leading-tight ${isSelectionActive ? 'text-amber-200/90' : ''}`}>
+                <span>পরিমাণ{modeLabel ? ` (${modeLabel})` : ''}</span>
+                <ChevronDown size={8} className="text-emerald-300 opacity-70 group-hover:opacity-100 transition-opacity shrink-0" />
               </div>
-            </>
-          )}
+              <div className={`font-bold text-[#A7F3D0] leading-tight break-words whitespace-normal max-w-full ${isSelectionActive ? 'text-[9.5px] sm:text-[11px]' : 'text-[10px] sm:text-[11.5px]'}`}>
+                {formattedQtyDisplay}
+              </div>
+            </button>
+
+            {/* Qty Calculation Mode Selection Menu */}
+            {showQtyMenu && (
+              <>
+                <div
+                  className="fixed inset-0 z-55"
+                  onClick={() => setShowQtyMenu(false)}
+                ></div>
+                <div className="absolute left-0 sm:left-auto top-full mt-2 w-52 sm:w-56 bg-white rounded-2xl shadow-2xl border border-slate-200 z-60 text-slate-800 text-xs overflow-hidden py-1.5 animate-in fade-in zoom-in-95 duration-150 text-left">
+                  <div className="px-3 py-1.5 border-b border-slate-100 font-bold text-slate-500 text-[10px] uppercase tracking-wider flex items-center justify-between">
+                    <span>Qty হিসাব / রূপান্তর</span>
+                    <Calculator size={13} className="text-[#1B5E20]" />
+                  </div>
+
+                  {/* Option 1: Bigha */}
+                  <button
+                    type="button"
+                    id="calc-bigha-option"
+                    onClick={() => {
+                      setQtyMode('bigha');
+                      localStorage.setItem('hisab_qty_mode', 'bigha');
+                      setShowQtyMenu(false);
+                    }}
+                    className={`w-full px-3 py-2 text-left flex items-center justify-between hover:bg-emerald-50 transition-colors ${
+                      qtyMode === 'bigha' ? 'bg-emerald-50 font-bold text-[#1B5E20]' : 'text-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2">
+                      <span className="text-base">🌾</span>
+                      <div>
+                        <div className="font-semibold text-xs">Calculate Bigha</div>
+                        <div className="text-[10px] text-slate-500">বিঘা-কাঠা (২০ কাঠা = ১ বিঘা)</div>
+                      </div>
+                    </div>
+                    {qtyMode === 'bigha' && <Check size={14} className="text-[#1B5E20] shrink-0" />}
+                  </button>
+
+                  {/* Option 2: YMD */}
+                  <button
+                    type="button"
+                    id="calc-ymd-option"
+                    onClick={() => {
+                      setQtyMode('ymd');
+                      localStorage.setItem('hisab_qty_mode', 'ymd');
+                      setShowQtyMenu(false);
+                    }}
+                    className={`w-full px-3 py-2 text-left flex items-center justify-between hover:bg-emerald-50 transition-colors ${
+                      qtyMode === 'ymd' ? 'bg-emerald-50 font-bold text-[#1B5E20]' : 'text-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2">
+                      <span className="text-base">📅</span>
+                      <div>
+                        <div className="font-semibold text-xs">Calculate YMD</div>
+                        <div className="text-[10px] text-slate-500">বছর-মাস-দিন ({displayYMD})</div>
+                      </div>
+                    </div>
+                    {qtyMode === 'ymd' && <Check size={14} className="text-[#1B5E20] shrink-0" />}
+                  </button>
+
+                  {/* Option 3: Hour */}
+                  <button
+                    type="button"
+                    id="calc-hour-option"
+                    onClick={() => {
+                      setQtyMode('hour');
+                      localStorage.setItem('hisab_qty_mode', 'hour');
+                      setShowQtyMenu(false);
+                    }}
+                    className={`w-full px-3 py-2 text-left flex items-center justify-between hover:bg-emerald-50 transition-colors ${
+                      qtyMode === 'hour' ? 'bg-emerald-50 font-bold text-[#1B5E20]' : 'text-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2">
+                      <span className="text-base">⏱️</span>
+                      <div>
+                        <div className="font-semibold text-xs">Calculate Hour</div>
+                        <div className="text-[10px] text-slate-500">ঘণ্টা-মিনিট (00H:00M)</div>
+                      </div>
+                    </div>
+                    {qtyMode === 'hour' && <Check size={14} className="text-[#1B5E20] shrink-0" />}
+                  </button>
+
+                  {/* Option 4: Trip */}
+                  <button
+                    type="button"
+                    id="calc-trip-option"
+                    onClick={() => {
+                      setQtyMode('trip');
+                      localStorage.setItem('hisab_qty_mode', 'trip');
+                      setShowQtyMenu(false);
+                    }}
+                    className={`w-full px-3 py-2 text-left flex items-center justify-between hover:bg-emerald-50 transition-colors ${
+                      qtyMode === 'trip' ? 'bg-emerald-50 font-bold text-[#1B5E20]' : 'text-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2">
+                      <span className="text-base">🚛</span>
+                      <div>
+                        <div className="font-semibold text-xs">Calculate Trip</div>
+                        <div className="text-[10px] text-slate-500">মোট ট্রিপ সংখ্যা</div>
+                      </div>
+                    </div>
+                    {qtyMode === 'trip' && <Check size={14} className="text-[#1B5E20] shrink-0" />}
+                  </button>
+
+                  <div className="my-1 border-t border-slate-100"></div>
+
+                  {/* Default Raw Number */}
+                  <button
+                    type="button"
+                    id="calc-default-option"
+                    onClick={() => {
+                      setQtyMode('default');
+                      localStorage.setItem('hisab_qty_mode', 'default');
+                      setShowQtyMenu(false);
+                    }}
+                    className={`w-full px-3 py-1.5 text-left flex items-center justify-between hover:bg-slate-50 text-slate-600 transition-colors ${
+                      qtyMode === 'default' ? 'font-bold text-[#1B5E20] bg-slate-50' : ''
+                    }`}
+                  >
+                    <span className="text-xs">ডিফল্ট সাধারণ সংখ্যা</span>
+                    {qtyMode === 'default' && <Check size={14} className="text-[#1B5E20] shrink-0" />}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* 2. SQL Calculated YMD Column */}
+          <div
+            className="text-center px-0.5 flex flex-col justify-center min-w-0 border-l border-white/20"
+            title={
+              minDate && maxDate && minDate.trim() && maxDate.trim()
+                ? `SQL তারিখ গণনা: ${minDate} থেকে ${maxDate} (${dateCount || 0} টি ভিন্ন দিন)`
+                : 'তারিখের পরিসীমা (YMD)'
+            }
+          >
+            <div className={`text-[9px] text-emerald-200/90 font-medium leading-tight whitespace-nowrap ${isSelectionActive ? 'text-amber-200/90' : ''}`}>
+              দিন (YMD)
+            </div>
+            <div className={`font-bold text-[#FED7AA] leading-tight break-words whitespace-normal ${isSelectionActive ? 'text-[9.5px] sm:text-[11px]' : 'text-[10px] sm:text-[11.5px]'}`}>
+              {displayYMD}
+            </div>
+          </div>
+
+          {/* 3. Total Bill */}
+          <div className="text-center px-0.5 flex flex-col justify-center min-w-0 border-l border-white/20">
+            <div className={`text-[9px] text-emerald-200/90 font-medium leading-tight ${isSelectionActive ? 'text-amber-200/90' : ''}`}>বিল</div>
+            <div className={`font-bold text-white leading-tight break-words whitespace-normal ${isSelectionActive ? 'text-[10px] sm:text-[11px]' : 'text-[10px] sm:text-[11.5px]'}`}>
+              ৳{Utils.toCleanString(totalBill)}
+            </div>
+          </div>
+
+          {/* 4. Total Paid */}
+          <div className="text-center px-0.5 flex flex-col justify-center min-w-0 border-l border-white/20">
+            <div className={`text-[9px] text-emerald-200/90 font-medium leading-tight ${isSelectionActive ? 'text-amber-200/90' : ''}`}>উঠেছে</div>
+            <div className={`font-bold text-[#69F0AE] leading-tight break-words whitespace-normal ${isSelectionActive ? 'text-[10px] sm:text-[11px]' : 'text-[10px] sm:text-[11.5px]'}`}>
+              ৳{Utils.toCleanString(totalPaid)}
+            </div>
+          </div>
+
+          {/* 5. Total Due */}
+          <div className="text-center px-0.5 flex flex-col justify-center min-w-0 border-l border-white/20">
+            <div className={`text-[9px] text-emerald-200/90 font-medium leading-tight ${isSelectionActive ? 'text-amber-200/90' : ''}`}>বকেয়া</div>
+            <div className={`font-bold text-[#FF8A80] leading-tight break-words whitespace-normal ${isSelectionActive ? 'text-[10px] sm:text-[11px]' : 'text-[10px] sm:text-[11.5px]'}`}>
+              ৳{Utils.toCleanString(totalDue)}
+            </div>
+          </div>
         </div>
 
-        {/* 2. SQL Calculated YMD Column */}
-        <div
-          className="text-center px-0.5 flex flex-col justify-center min-w-0 border-l border-white/20"
-          title={
-            minDate && maxDate && minDate.trim() && maxDate.trim()
-              ? `SQL তারিখ গণনা: ${minDate} থেকে ${maxDate} (${dateCount || 0} টি ভিন্ন দিন)`
-              : 'তারিখের পরিসীমা (YMD)'
-          }
-        >
-          <div className={`text-[9px] text-emerald-200/90 font-medium leading-tight whitespace-nowrap ${isSelectionActive ? 'text-amber-200/90' : ''}`}>
-            দিন (YMD)
+        {/* Financial Totals Row: Spend, Profit, Cashout, Credit */}
+        <div className="grid grid-cols-4 items-center bg-black/10 px-2 py-0.5 rounded-lg border border-white/5 text-[8.5px] sm:text-[9.5px]">
+          <div className="text-center flex flex-col">
+            <span className="text-emerald-100/70 font-medium">ব্যয় (Spend)</span>
+            <span className="font-bold text-[#FFCCBC]">৳{Utils.toCleanString(totalSpend)}</span>
           </div>
-          <div className={`font-bold text-[#FED7AA] leading-tight break-words whitespace-normal ${isSelectionActive ? 'text-[9.5px] sm:text-[11px]' : 'text-[10px] sm:text-[11.5px]'}`}>
-            {displayYMD}
+          <div className="text-center flex flex-col border-l border-white/10">
+            <span className="text-emerald-100/70 font-medium">লাভ (Profit)</span>
+            <span className="font-bold text-[#81C784]">৳{Utils.toCleanString(totalProfit)}</span>
           </div>
-        </div>
-
-        {/* 3. Total Bill */}
-        <div className="text-center px-0.5 flex flex-col justify-center min-w-0 border-l border-white/20">
-          <div className={`text-[9px] text-emerald-200/90 font-medium leading-tight ${isSelectionActive ? 'text-amber-200/90' : ''}`}>বিল</div>
-          <div className={`font-bold text-white leading-tight break-words whitespace-normal ${isSelectionActive ? 'text-[10px] sm:text-[11px]' : 'text-[10px] sm:text-[11.5px]'}`}>
-            ৳{Utils.toCleanString(totalBill)}
+          <div className="text-center flex flex-col border-l border-white/10">
+            <span className="text-emerald-100/70 font-medium">ক্যাশ (Out)</span>
+            <span className="font-bold text-[#B0BEC5]">৳{Utils.toCleanString(totalCashout)}</span>
           </div>
-        </div>
-
-        {/* 4. Total Paid */}
-        <div className="text-center px-0.5 flex flex-col justify-center min-w-0 border-l border-white/20">
-          <div className={`text-[9px] text-emerald-200/90 font-medium leading-tight ${isSelectionActive ? 'text-amber-200/90' : ''}`}>জমা</div>
-          <div className={`font-bold text-[#69F0AE] leading-tight break-words whitespace-normal ${isSelectionActive ? 'text-[10px] sm:text-[11px]' : 'text-[10px] sm:text-[11.5px]'}`}>
-            ৳{Utils.toCleanString(totalPaid)}
-          </div>
-        </div>
-
-        {/* 5. Total Due */}
-        <div className="text-center px-0.5 flex flex-col justify-center min-w-0 border-l border-white/20">
-          <div className={`text-[9px] text-emerald-200/90 font-medium leading-tight ${isSelectionActive ? 'text-amber-200/90' : ''}`}>বকেয়া</div>
-          <div className={`font-bold text-[#FF8A80] leading-tight break-words whitespace-normal ${isSelectionActive ? 'text-[10px] sm:text-[11px]' : 'text-[10px] sm:text-[11.5px]'}`}>
-            ৳{Utils.toCleanString(totalDue)}
+          <div className="text-center flex flex-col border-l border-white/10">
+            <span className="text-emerald-100/70 font-medium">জমা (Credit)</span>
+            <span className="font-bold text-[#69F0AE]">৳{Utils.toCleanString(totalCredit)}</span>
           </div>
         </div>
       </div>

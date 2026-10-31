@@ -22,8 +22,8 @@ export const DashboardSearchBar: React.FC<DashboardSearchBarProps> = ({
   }, []);
 
   return (
-    <div className="px-3.5 pt-2 pb-1">
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex items-center px-3.5 py-2">
+    <div className="px-3.5 pt-1 pb-0.5">
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 flex items-center px-3.5 py-1.5">
         <Search size={18} className="text-[#1B5E20] mr-2 shrink-0" />
         <input
           ref={inputRef}

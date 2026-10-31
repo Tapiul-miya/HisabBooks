@@ -131,11 +131,15 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
   const dbTotalPaid = totals?.totalPaid ?? groupedList.reduce((acc, g) => acc + g.totalPaid, 0);
   const dbTotalDue = totals?.totalDue ?? groupedList.reduce((acc, g) => acc + g.totalDue, 0);
   const dbTotalQty = totals?.totalQty ?? groupedList.reduce((acc, g) => acc + (g.totalQty || 0), 0);
+  const dbTotalSpend = totals?.totalSpend ?? groupedList.reduce((acc, g) => acc + (g.totalSpend || 0), 0);
+  const dbTotalProfit = totals?.totalProfit ?? groupedList.reduce((acc, g) => acc + (g.totalProfit || 0), 0);
+  const dbTotalCashout = totals?.totalCashout ?? groupedList.reduce((acc, g) => acc + (g.totalCashout || 0), 0);
+  const dbTotalCredit = totals?.totalCredit ?? groupedList.reduce((acc, g) => acc + (g.totalCredit || 0), 0);
   const dbTotalDateCount = totals?.dateCount ?? (() => {
     const dates = new Set<string>();
     groupedList.forEach(g => {
-      if (g.date) dates.add(g.date);
-      if (g.items) g.items.forEach(it => { if (it.date) dates.add(it.date); });
+      if ((g.totalQty || 0) > 0 && g.date) dates.add(g.date);
+      if (g.items) g.items.forEach(it => { if ((it.qty || 0) > 0 && it.date) dates.add(it.date); });
     });
     return dates.size;
   })();
@@ -147,6 +151,10 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
     let paid = 0;
     let due = 0;
     let qty = 0;
+    let spend = 0;
+    let profit = 0;
+    let cashout = 0;
+    let credit = 0;
     const dates = new Set<string>();
 
     groupedList.forEach(group => {
@@ -156,12 +164,16 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
           paid += item.paid || 0;
           due += item.due || 0;
           qty += item.qty || 0;
+          spend += item.spend || 0;
+          profit += item.profit || 0;
+          cashout += item.cashout || 0;
+          credit += item.credit || 0;
           if (item.date) dates.add(item.date);
         }
       });
     });
 
-    return { bill, paid, due, qty, dateCount: dates.size };
+    return { bill, paid, due, qty, spend, profit, cashout, credit, dateCount: dates.size };
   }, [groupedList, selectedItemIds]);
 
   const isSelectionActive = selectedItemIds.size > 0;
@@ -169,6 +181,10 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
   const totalPaid = isSelectionActive ? selectedTotals!.paid : dbTotalPaid;
   const totalDue = isSelectionActive ? selectedTotals!.due : dbTotalDue;
   const totalQty = isSelectionActive ? selectedTotals!.qty : dbTotalQty;
+  const totalSpend = isSelectionActive ? selectedTotals!.spend : dbTotalSpend;
+  const totalProfit = isSelectionActive ? selectedTotals!.profit : dbTotalProfit;
+  const totalCashout = isSelectionActive ? selectedTotals!.cashout : dbTotalCashout;
+  const totalCredit = isSelectionActive ? selectedTotals!.credit : dbTotalCredit;
   const totalDateCount = isSelectionActive ? selectedTotals!.dateCount : dbTotalDateCount;
 
   // Progressive infinite scroll handler
@@ -198,6 +214,10 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
           totalPaid={totalPaid}
           totalDue={totalDue}
           totalQty={totalQty}
+          totalSpend={totalSpend}
+          totalProfit={totalProfit}
+          totalCashout={totalCashout}
+          totalCredit={totalCredit}
           minDate={isSelectionActive ? undefined : totals?.minDate}
           maxDate={isSelectionActive ? undefined : totals?.maxDate}
           dateCount={totalDateCount}
@@ -214,7 +234,7 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
         />
 
         {!customerFilter && !dateFilter && (
-          <div className="bg-[#E1E8EF] pb-2 pt-1 border-b border-slate-200/60">
+          <div className="bg-[#E1E8EF] pb-1 pt-0 border-b border-slate-200/60">
             {isSearchOpen && (
               <DashboardSearchBar
                 query={searchQuery}

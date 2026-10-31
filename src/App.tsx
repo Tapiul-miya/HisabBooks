@@ -34,6 +34,10 @@ export const App: React.FC = () => {
     totalPaid: 0,
     totalDue: 0,
     totalQty: 0,
+    totalSpend: 0,
+    totalProfit: 0,
+    totalCashout: 0,
+    totalCredit: 0,
     totalCount: 0
   });
 

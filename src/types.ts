@@ -47,6 +47,10 @@ export interface GroupedHisab {
   totalPaid: number;
   totalDue: number;
   totalQty: number;
+  totalSpend: number;
+  totalProfit: number;
+  totalCashout: number;
+  totalCredit: number;
   itemCount: number;
   minDate?: string;
   maxDate?: string;
@@ -60,6 +64,10 @@ export interface DatabaseTotals {
   totalPaid: number;
   totalDue: number;
   totalQty: number;
+  totalSpend: number;
+  totalProfit: number;
+  totalCashout: number;
+  totalCredit: number;
   totalCount: number;
   minDate?: string;
   maxDate?: string;

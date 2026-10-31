@@ -279,9 +279,9 @@ export const ViewModeFilterRow: React.FC<ViewModeFilterRowProps> = ({
   };
 
   return (
-    <div className="px-3.5 py-1 space-y-1.5 relative">
+    <div className="px-3.5 py-0.5 space-y-1 relative">
       {/* Primary Top Filter Row (Horizontally Scrollable) */}
-      <div className="flex items-center gap-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden whitespace-nowrap py-0.5 touch-pan-x">
+      <div className="flex items-center gap-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden whitespace-nowrap py-0 touch-pan-x">
         {/* 1. Main Filter Dropdown: (কিসের কাজ) */}
         <div className="relative flex items-center shrink-0 min-w-[130px] max-w-[200px]">
           <Briefcase size={13} className="absolute left-2.5 text-[#1565C0] pointer-events-none z-10" />
@@ -372,7 +372,7 @@ export const ViewModeFilterRow: React.FC<ViewModeFilterRowProps> = ({
 
       {/* 6 Secondary Dropdowns - ONLY SHOWN when "কিসের কাজ" (mainWork) is selected */}
       {mainWork && (
-        <div className="pt-0.5 pb-0.5 flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden whitespace-nowrap bg-blue-50/70 p-1.5 rounded-xl border border-blue-200/80">
+        <div className="flex items-center gap-1.5 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden whitespace-nowrap bg-blue-50/70 p-1 rounded-xl border border-blue-200/80">
           {/* 1. কত সাল */}
           <div className="relative flex items-center shrink-0 min-w-[100px] max-w-[140px]">
             <Calendar size={12} className="absolute left-2 text-blue-700 pointer-events-none z-10" />
