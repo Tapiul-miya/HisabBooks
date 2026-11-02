@@ -159,7 +159,15 @@ export const GroupChildItemRow: React.FC<GroupChildItemRowProps> = ({
         )}
       </div>
 
-      <div className={`flex items-center justify-between text-[10.5px] font-semibold text-slate-800 mt-2 pt-1.5 border-t ${isDue ? 'border-rose-100' : 'border-emerald-100'} px-0.5`}>
+      {/* Financial Details Row */}
+      <div className="flex items-center justify-between text-[9.5px] font-bold text-slate-500 mt-2 px-0.5 border-t border-slate-100 pt-1">
+        <span>Spend: <span className="text-rose-600">৳{Utils.toCleanString(item.spend || 0)}</span></span>
+        <span>Profit: <span className="text-blue-600">৳{Utils.toCleanString(item.profit || 0)}</span></span>
+        <span>Out: <span className="text-slate-600">৳{Utils.toCleanString(item.cashout || 0)}</span></span>
+        <span>Credit: <span className="text-[#15803D]">৳{Utils.toCleanString(item.credit || 0)}</span></span>
+      </div>
+
+      <div className={`flex items-center justify-between text-[10.5px] font-semibold text-slate-800 mt-1 pt-1.5 border-t ${isDue ? 'border-rose-100' : 'border-emerald-100'} px-0.5`}>
         <span>
           বিল: <span className="font-bold text-slate-900">৳{Utils.toCleanString(item.bill)}</span>
         </span>

@@ -436,22 +436,22 @@ export const HeaderSummary: React.FC<HeaderSummaryProps> = ({
           </div>
         </div>
 
-        {/* Financial Totals Row: Spend, Profit, Cashout, Credit */}
+        {/* Financial Totals Row: Spend, Profit, Out, Credit */}
         <div className="grid grid-cols-4 items-center bg-black/10 px-2 py-0.5 rounded-lg border border-white/5 text-[8.5px] sm:text-[9.5px]">
           <div className="text-center flex flex-col">
-            <span className="text-emerald-100/70 font-medium">ব্যয় (Spend)</span>
+            <span className="text-emerald-100/70 font-medium">Spend</span>
             <span className="font-bold text-[#FFCCBC]">৳{Utils.toCleanString(totalSpend)}</span>
           </div>
           <div className="text-center flex flex-col border-l border-white/10">
-            <span className="text-emerald-100/70 font-medium">লাভ (Profit)</span>
+            <span className="text-emerald-100/70 font-medium">Profit</span>
             <span className="font-bold text-[#81C784]">৳{Utils.toCleanString(totalProfit)}</span>
           </div>
           <div className="text-center flex flex-col border-l border-white/10">
-            <span className="text-emerald-100/70 font-medium">ক্যাশ (Out)</span>
+            <span className="text-emerald-100/70 font-medium">Out</span>
             <span className="font-bold text-[#B0BEC5]">৳{Utils.toCleanString(totalCashout)}</span>
           </div>
           <div className="text-center flex flex-col border-l border-white/10">
-            <span className="text-emerald-100/70 font-medium">জমা (Credit)</span>
+            <span className="text-emerald-100/70 font-medium">Credit</span>
             <span className="font-bold text-[#69F0AE]">৳{Utils.toCleanString(totalCredit)}</span>
           </div>
         </div>

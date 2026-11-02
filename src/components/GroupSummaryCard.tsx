@@ -307,6 +307,16 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
 
           <div className="mt-0.5 mb-0.5 border-t border-[#CFD8DC]"></div>
 
+          {/* Financial Details Row */}
+          <div className="flex items-center justify-between text-[9.5px] font-bold text-slate-500 px-0.5 py-1">
+            <span>Spend: <span className="text-rose-600">৳{Utils.toCleanString(groupedHisab.totalSpend)}</span></span>
+            <span>Profit: <span className="text-blue-600">৳{Utils.toCleanString(groupedHisab.totalProfit)}</span></span>
+            <span>Out: <span className="text-slate-600">৳{Utils.toCleanString(groupedHisab.totalCashout)}</span></span>
+            <span>Credit: <span className="text-[#15803D]">৳{Utils.toCleanString(groupedHisab.totalCredit)}</span></span>
+          </div>
+
+          <div className="border-t border-slate-100 mb-1"></div>
+
           <div className="flex items-start justify-between text-xs font-semibold py-0">
             <div className="flex flex-col">
               <span className="text-[#15803D]">

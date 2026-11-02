@@ -1691,7 +1691,7 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-semibold text-slate-700">
-                      ক্রেডিট / Credit (৳)
+                      জমা / Credit (৳)
                     </label>
                     <span className="text-[10px] text-slate-400 font-medium">(জমা - ক্যাশআউট)</span>
                   </div>
@@ -1700,7 +1700,7 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
                     readOnly
                     id="input-credit-amount"
                     value={`৳ ${Utils.toCleanString(credit)}`}
-                    className="w-full bg-slate-100/90 border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold text-blue-800 cursor-not-allowed select-none"
+                    className="w-full bg-slate-100/90 border border-slate-300 rounded-xl px-3 py-2 text-sm font-bold text-emerald-800 cursor-not-allowed select-none"
                   />
                 </div>
               </div>
