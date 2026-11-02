@@ -167,8 +167,8 @@ export const listDriveBackups = async (token: string): Promise<DriveBackupFile[]
   }
 
   const queryCondition = folderId
-    ? `trashed = false and (name contains 'HisabBook' or '${folderId}' in parents)`
-    : "trashed = false and name contains 'HisabBook'";
+    ? `trashed = false and mimeType != 'application/vnd.google-apps.folder' and (name contains 'HisabBook' or '${folderId}' in parents)`
+    : "trashed = false and mimeType != 'application/vnd.google-apps.folder' and name contains 'HisabBook'";
 
   const query = encodeURIComponent(queryCondition);
   const url = `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,mimeType,size,createdTime,modifiedTime,description)&orderBy=createdTime desc&pageSize=50`;
