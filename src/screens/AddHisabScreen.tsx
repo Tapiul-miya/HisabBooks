@@ -612,8 +612,8 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
   }, [bill, amount, spend]);
 
   const credit = useMemo(() => {
-    return paid - cashout;
-  }, [paid, cashout]);
+    return profit - cashout;
+  }, [profit, cashout]);
 
   const [showExtraFields, setShowExtraFields] = useState(false);
 
@@ -1691,9 +1691,9 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-semibold text-slate-700">
-                      জমা / Credit (৳)
+                      অবশিষ্ট লাভ / Cash (৳)
                     </label>
-                    <span className="text-[10px] text-slate-400 font-medium">(জমা - ক্যাশআউট)</span>
+                    <span className="text-[10px] text-slate-400 font-medium">(লাভ - ক্যাশআউট)</span>
                   </div>
                   <input
                     type="text"

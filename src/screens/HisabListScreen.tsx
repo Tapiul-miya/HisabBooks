@@ -167,7 +167,8 @@ export const HisabListScreen: React.FC<HisabListScreenProps> = ({
           spend += item.spend || 0;
           profit += item.profit || 0;
           cashout += item.cashout || 0;
-          credit += item.credit || 0;
+          // Calculate net cash as profit minus cashout
+          credit += (item.profit || 0) - (item.cashout || 0);
           if (item.date) dates.add(item.date);
         }
       });

@@ -451,8 +451,8 @@ export const HeaderSummary: React.FC<HeaderSummaryProps> = ({
             <span className="font-bold text-[#B0BEC5]">৳{Utils.toCleanString(totalCashout)}</span>
           </div>
           <div className="text-center flex flex-col border-l border-white/10">
-            <span className="text-emerald-100/70 font-medium">Credit</span>
-            <span className="font-bold text-[#69F0AE]">৳{Utils.toCleanString(totalCredit)}</span>
+            <span className="text-emerald-100/70 font-medium">Cash</span>
+            <span className="font-bold text-[#69F0AE]">৳{Utils.toCleanString(totalProfit - totalCashout)}</span>
           </div>
         </div>
       </div>
