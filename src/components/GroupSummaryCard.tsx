@@ -320,12 +320,12 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
           <div className="flex items-start justify-between text-xs font-semibold py-0">
             <div className="flex flex-col">
               <span className="text-[#15803D]">
-                জমা: <span className="font-bold">৳{Utils.toCleanString(groupedHisab.totalPaid)}</span>
+                পরিশোধিত: <span className="font-bold">৳{Utils.toCleanString(groupedHisab.totalPaid)}</span>
               </span>
             </div>
             <div className="flex flex-col items-end text-right">
               <span className={isDue ? 'text-[#DC2626]' : 'text-[#15803D]'}>
-                {isDue ? 'বকেয়া' : 'পরিশোধিত'}: <span className="font-bold">৳{Utils.toCleanString(groupedHisab.totalDue)}</span>
+                বকেয়া: <span className="font-bold">৳{Utils.toCleanString(groupedHisab.totalDue)}</span>
               </span>
             </div>
           </div>

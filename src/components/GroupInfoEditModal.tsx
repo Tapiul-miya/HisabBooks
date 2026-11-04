@@ -649,7 +649,7 @@ export const GroupInfoEditModal: React.FC<GroupInfoEditModalProps> = ({
             </div>
             <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-slate-500">
               <div>মোট বিল: ৳{group.totalBill}</div>
-              <div>মোট জমা: ৳{group.totalPaid}</div>
+              <div>মোট পরিশোধিত: ৳{group.totalPaid}</div>
               <div>বকেয়া: ৳{group.totalDue}</div>
               <div>মোট এন্ট্রি: {group.itemCount || group.items.length} টি</div>
             </div>

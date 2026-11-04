@@ -172,7 +172,7 @@ export const GroupChildItemRow: React.FC<GroupChildItemRowProps> = ({
           বিল: <span className="font-bold text-slate-900">৳{Utils.toCleanString(item.bill)}</span>
         </span>
         <span className="text-[#15803D]">
-          জমা: <span className="font-bold text-[#15803D]">৳{Utils.toCleanString(item.paid)}</span>
+          পরিশোধিত: <span className="font-bold text-[#15803D]">৳{Utils.toCleanString(item.paid)}</span>
         </span>
         <span>
           {isDue ? (
@@ -181,7 +181,7 @@ export const GroupChildItemRow: React.FC<GroupChildItemRowProps> = ({
             </span>
           ) : (
             <span className="text-[9.5px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded-md whitespace-nowrap inline-block shadow-2xs">
-              পরিশোধিত: ৳{Utils.toCleanString(item.due)}
+              বকেয়া: ৳{Utils.toCleanString(item.due)}
             </span>
           )}
         </span>

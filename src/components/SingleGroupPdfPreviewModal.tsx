@@ -137,7 +137,7 @@ export const SingleGroupPdfPreviewModal: React.FC<SingleGroupPdfPreviewModalProp
               </div>
               <div style={{ width: '1px', height: '32px', backgroundColor: '#a7f3d0' }}></div>
               <div style={{ flex: 1, textAlign: 'center' }}>
-                <div className="text-[11px] font-bold text-emerald-900" style={{ color: '#065f46' }}>মোট জমা</div>
+                <div className="text-[11px] font-bold text-emerald-900" style={{ color: '#065f46' }}>মোট পরিশোধিত</div>
                 <div className="text-base sm:text-lg font-extrabold text-emerald-700 mt-0.5" style={{ color: '#047857' }}>৳{Utils.toCleanString(group.totalPaid)}</div>
               </div>
               <div style={{ width: '1px', height: '32px', backgroundColor: '#a7f3d0' }}></div>
@@ -168,7 +168,7 @@ export const SingleGroupPdfPreviewModal: React.FC<SingleGroupPdfPreviewModalProp
                     <th className="p-3 border-b border-emerald-800 font-bold text-white uppercase tracking-wider" style={{ backgroundColor: '#1B5E20', color: '#ffffff' }}>অতিরিক্ত বিলের তথ্য</th>
                     <th className="p-3 border-b border-emerald-800 font-bold text-white uppercase tracking-wider text-right" style={{ backgroundColor: '#1B5E20', color: '#ffffff' }}>বিল</th>
                     <th className="p-3 border-b border-emerald-800 font-bold text-white uppercase tracking-wider" style={{ backgroundColor: '#1B5E20', color: '#ffffff' }}>টাকা পরিশোধের বিবরণ</th>
-                    <th className="p-3 border-b border-emerald-800 font-bold text-white uppercase tracking-wider text-right" style={{ backgroundColor: '#1B5E20', color: '#ffffff' }}>জমা</th>
+                    <th className="p-3 border-b border-emerald-800 font-bold text-white uppercase tracking-wider text-right" style={{ backgroundColor: '#1B5E20', color: '#ffffff' }}>পরিশোধিত</th>
                     <th className="p-3 border-b border-emerald-800 font-bold text-white uppercase tracking-wider text-right" style={{ backgroundColor: '#1B5E20', color: '#ffffff' }}>বকেয়া</th>
                   </tr>
                 </thead>
