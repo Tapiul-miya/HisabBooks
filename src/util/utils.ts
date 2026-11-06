@@ -642,7 +642,9 @@ export namespace Utils {
     const isYearStr = (s: string) => /[\d0-9০-৯]{4}/.test(s) || /^(19|20)\d{2}/.test(s);
     const isSessionStr = (s: string) => /সেশন|session|সিজন|season/i.test(s);
 
-    const work = parts[0] || '';
+    // Take only the first part of the work string if it contains extra delimiters
+    const workFull = parts[0] || '';
+    const work = workFull.split(/[-,:]/)[0].trim();
     let year = parts[1] || '';
     let session = parts[2] || '';
     let manager = parts[3] || '';

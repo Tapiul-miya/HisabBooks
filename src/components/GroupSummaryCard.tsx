@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Plus, ChevronDown, ChevronUp, Phone, MapPin, FileText, Pencil, Filter } from 'lucide-react';
 import { GroupedHisab, GroupByMode, VehicleHisab, CustomerFilter, DateWorkFilter, AdvancedFilterState } from '../types';
 import { GroupChildItemRow } from './GroupChildItemRow';
@@ -75,8 +75,7 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
   const isDateFilterActive = Boolean(
     activeDateFilter &&
     (activeDateFilter.date || '').trim() === (groupedHisab.date || '').trim() &&
-    (activeDateFilter.hisabType === undefined || (activeDateFilter.hisabType || '').trim().toLowerCase() === (groupedHisab.hisabType || '').trim().toLowerCase()) &&
-    (activeDateFilter.workDetails === undefined || (activeDateFilter.workDetails || '').trim().toLowerCase() === (groupedHisab.workDetails || '').trim().toLowerCase())
+    (activeDateFilter.hisabType === undefined || (activeDateFilter.hisabType || '').trim().toLowerCase() === (groupedHisab.hisabType || '').trim().toLowerCase())
   );
 
   const type = groupedHisab.hisabType.toLowerCase();
@@ -114,6 +113,35 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
     : isDue
     ? 'bg-gradient-to-b from-[#FFFFFF] via-[#FFFDFD] to-[#FFF5F5] border-rose-400/90 shadow-[0_3px_12px_-2px_rgba(244,63,94,0.12)]'
     : 'bg-gradient-to-b from-[#FFFFFF] via-[#F8FCF9] to-[#EFFBF4] border-emerald-400/90 shadow-[0_3px_12px_-2px_rgba(16,185,129,0.12)]';
+
+  const isAnyWorkFilterActive = useMemo(() => {
+    return Boolean(
+      (advancedFilter?.mainWork && advancedFilter.mainWork !== 'ALL') ||
+      advancedFilter?.year ||
+      advancedFilter?.session ||
+      advancedFilter?.manager ||
+      advancedFilter?.vehicle ||
+      advancedFilter?.driver ||
+      advancedFilter?.trolleyBed
+    );
+  }, [advancedFilter]);
+
+  const displayWorkDetails = useMemo(() => {
+    if (!isAnyWorkFilterActive) return '';
+
+    const components: string[] = [];
+    
+    // Use values directly from the 7 filtering dropdowns (advancedFilter)
+    if (advancedFilter?.mainWork && advancedFilter.mainWork !== 'ALL') components.push(advancedFilter.mainWork);
+    if (advancedFilter?.year) components.push(advancedFilter.year);
+    if (advancedFilter?.session) components.push(advancedFilter.session);
+    if (advancedFilter?.manager) components.push(advancedFilter.manager);
+    if (advancedFilter?.vehicle) components.push(advancedFilter.vehicle);
+    if (advancedFilter?.driver) components.push(advancedFilter.driver);
+    if (advancedFilter?.trolleyBed) components.push(advancedFilter.trolleyBed);
+    
+    return components.join(' | ');
+  }, [advancedFilter, isAnyWorkFilterActive]);
 
   return (
     <>
@@ -278,10 +306,10 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
 
           <div className="flex items-start justify-between mt-1 pt-1 border-t border-slate-100 text-xs gap-2">
             <div className="min-w-0 flex-1 space-y-1">
-              {!hideWorkAndQtyBadges && groupedHisab.workDetails ? (
+              {displayWorkDetails ? (
                 <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
                   <span className="bg-[#E3F2FD] text-[#1565C0] text-[11px] font-semibold px-2 py-1 rounded-md break-words whitespace-normal inline-block max-w-full leading-relaxed border border-blue-100">
-                    {groupedHisab.workDetails}
+                    {displayWorkDetails}
                   </span>
                 </div>
               ) : null}

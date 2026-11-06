@@ -211,8 +211,8 @@ export const App: React.FC = () => {
     const targetGroup = list.find(g =>
       (savedId && g.items.some(i => i.id === savedId)) ||
       (selectedGroupByMode === GroupByMode.BY_DATE_WORK
-        ? g.date === entry.date
-        : (g.name === entry.name && g.hisabType === entry.hisabType && g.workDetails === entry.workDetails))
+        ? (g.date === entry.date && g.hisabType === entry.hisabType)
+        : (g.name === entry.name && g.address === entry.address && g.mobile === entry.mobile && g.hisabType === entry.hisabType))
     );
 
     if (targetGroup) {

@@ -706,10 +706,10 @@ export class HisabStorage {
   }
 
   /**
-   * Pure SQL: Update group profile info (name, mobile, address, workDetails) for all items in the group
+   * Pure SQL: Update group profile info (name, mobile, address) for all items in the group
    */
   public static async updateGroupProfile(
-    oldGroup: { name: string; date: string; hisabType: string; address: string; mobile: string; workDetails: string },
+    oldGroup: { name: string; date: string; address: string; mobile: string; hisabType?: string; workDetails?: string },
     newGroup: { name?: string; mobile?: string; address?: string; workDetails?: string; date?: string },
     groupByMode: GroupByMode
   ): Promise<boolean> {
@@ -718,7 +718,7 @@ export class HisabStorage {
       const stmt = db.prepare(`
         UPDATE hisab
         SET name = ?, mobile = ?, address = ?, workDetails = ?
-        WHERE COALESCE(name, "") = ? AND COALESCE(hisabType, "") = ? AND COALESCE(address, "") = ? AND COALESCE(mobile, "") = ? AND COALESCE(workDetails, "") = ?
+        WHERE COALESCE(name, "") = ? AND COALESCE(address, "") = ? AND COALESCE(mobile, "") = ? AND COALESCE(hisabType, "") = ?
       `);
       stmt.run([
         newGroup.name || '',
@@ -726,33 +726,22 @@ export class HisabStorage {
         newGroup.address || '',
         newGroup.workDetails || '',
         oldGroup.name || '',
-        oldGroup.hisabType || '',
         oldGroup.address || '',
         oldGroup.mobile || '',
-        oldGroup.workDetails || ''
+        oldGroup.hisabType || ''
       ]);
       stmt.free();
     } else {
-      const conditions: string[] = [`COALESCE(date, "") = ?`];
-      const params: (string | number)[] = [oldGroup.date || ''];
-      if (oldGroup.hisabType && oldGroup.hisabType.trim()) {
-        conditions.push(`COALESCE(hisabType, "") = ?`);
-        params.push(oldGroup.hisabType.trim());
-      }
-      if (oldGroup.workDetails && oldGroup.workDetails.trim()) {
-        conditions.push(`COALESCE(workDetails, "") = ?`);
-        params.push(oldGroup.workDetails.trim());
-      }
-
       const stmt = db.prepare(`
         UPDATE hisab
         SET date = ?, workDetails = ?
-        WHERE ${conditions.join(' AND ')}
+        WHERE COALESCE(date, "") = ? AND COALESCE(hisabType, "") = ?
       `);
       stmt.run([
         newGroup.date !== undefined ? newGroup.date : (oldGroup.date || ''),
         newGroup.workDetails !== undefined ? newGroup.workDetails : (oldGroup.workDetails || ''),
-        ...params
+        oldGroup.date || '',
+        oldGroup.hisabType || ''
       ]);
       stmt.free();
     }
@@ -890,14 +879,7 @@ export class HisabStorage {
   ): Promise<HisabQueryResult> {
     const db = await getSqliteDb();
     const trimmed = query.trim();
-    const trimmedWork = workDetailsFilter.trim();
     const isUserDetails = groupByMode === GroupByMode.BY_USER_DETAILS;
-    const selectedMainWork = (
-      (advancedFilter?.mainWork && advancedFilter.mainWork.trim() && advancedFilter.mainWork !== 'ALL')
-        ? advancedFilter.mainWork.trim()
-        : (trimmedWork ? Utils.parseWorkDetails(trimmedWork).work.trim() : '')
-    );
-    const hasWorkFilter = Boolean(selectedMainWork);
 
     // 1. Where clause for search & workDetails filter & customer filter & advancedFilter & dateFilter
     const conditions: string[] = [];
@@ -910,10 +892,6 @@ export class HisabStorage {
       params.push(customerFilter.mobile || '');
       conditions.push(`COALESCE(address, '') = ?`);
       params.push(customerFilter.address || '');
-      if (hasWorkFilter && customerFilter.hisabType) {
-        conditions.push(`COALESCE(hisabType, '') = ?`);
-        params.push(customerFilter.hisabType || '');
-      }
     }
 
     if (dateFilter) {
@@ -995,8 +973,8 @@ export class HisabStorage {
         conditions.push(`workDetails LIKE ?`);
         params.push(`%${advancedFilter.trolleyBed.trim()}%`);
       }
-    } else if (trimmedWork.length > 0) {
-      const parts = trimmedWork.split('|').map(s => s.trim()).filter(Boolean);
+    } else if (workDetailsFilter.trim().length > 0) {
+      const parts = workDetailsFilter.trim().split('|').map(s => s.trim()).filter(Boolean);
       if (parts.length > 0) {
         for (const part of parts) {
           conditions.push(`workDetails LIKE ?`);
@@ -1004,7 +982,7 @@ export class HisabStorage {
         }
       } else {
         conditions.push(`workDetails = ?`);
-        params.push(trimmedWork);
+        params.push(workDetailsFilter.trim());
       }
     }
 
@@ -1161,65 +1139,10 @@ export class HisabStorage {
 
     let groupSql = '';
     if (isUserDetails) {
-      if (hasWorkFilter) {
-        groupSql = `
-          SELECT 
-            name, hisabType, address, mobile, workDetails,
-            COALESCE(SUM(bill), 0) AS totalBill,
-            COALESCE(SUM(paid), 0) AS totalPaid,
-            COALESCE(SUM(due), 0) AS totalDue,
-            COALESCE(SUM(qty), 0) AS totalQty, COALESCE(SUM(spend), 0) AS totalSpend, COALESCE(SUM(profit), 0) AS totalProfit, COALESCE(SUM(cashout), 0) AS totalCashout, COALESCE(SUM(credit), 0) AS totalCredit,
-            COUNT(id) AS itemCount,
-            MIN(date) AS minDate,
-            MAX(date) AS maxDate,
-            COUNT(DISTINCT date) AS dateCount,
-            MIN(date) AS earliestDate,
-            MIN(id) AS earliestId,
-            MAX(id) AS maxId
-          FROM hisab
-          ${whereClause}
-          GROUP BY name, hisabType, address, mobile, workDetails
-          ORDER BY ${groupOrderBy};
-        `;
-      } else {
-        groupSql = `
-          SELECT 
-            name, address, mobile,
-            CASE WHEN COUNT(DISTINCT hisabType) = 1 THEN MIN(hisabType) ELSE '' END AS hisabType,
-            CASE WHEN COUNT(DISTINCT workDetails) = 1 THEN MIN(workDetails) ELSE '' END AS workDetails,
-            COALESCE(SUM(bill), 0) AS totalBill,
-            COALESCE(SUM(paid), 0) AS totalPaid,
-            COALESCE(SUM(due), 0) AS totalDue,
-            COALESCE(SUM(qty), 0) AS totalQty, COALESCE(SUM(spend), 0) AS totalSpend, COALESCE(SUM(profit), 0) AS totalProfit, COALESCE(SUM(cashout), 0) AS totalCashout, COALESCE(SUM(credit), 0) AS totalCredit,
-            COUNT(id) AS itemCount,
-            MIN(date) AS minDate,
-            MAX(date) AS maxDate,
-            COUNT(DISTINCT date) AS dateCount,
-            MIN(date) AS earliestDate,
-            MIN(id) AS earliestId,
-            MAX(id) AS maxId
-          FROM hisab
-          ${whereClause}
-          GROUP BY name, address, mobile
-          ORDER BY ${groupOrderBy};
-        `;
-      }
-    } else if (hasWorkFilter) {
       groupSql = `
         SELECT 
-          date,
-          CASE 
-            WHEN INSTR(workDetails, '|') > 0 THEN TRIM(SUBSTR(workDetails, 1, INSTR(workDetails, '|') - 1))
-            ELSE TRIM(COALESCE(workDetails, ''))
-          END AS mainWork,
-          CASE WHEN COUNT(DISTINCT hisabType) = 1 THEN MIN(hisabType) ELSE '' END AS hisabType,
-          CASE 
-            WHEN COUNT(DISTINCT workDetails) = 1 THEN MIN(workDetails)
-            ELSE CASE 
-              WHEN INSTR(workDetails, '|') > 0 THEN TRIM(SUBSTR(workDetails, 1, INSTR(workDetails, '|') - 1))
-              ELSE TRIM(COALESCE(workDetails, ''))
-            END
-          END AS workDetails,
+          name, address, mobile, hisabType,
+          GROUP_CONCAT(DISTINCT workDetails) AS workDetails,
           COALESCE(SUM(bill), 0) AS totalBill,
           COALESCE(SUM(paid), 0) AS totalPaid,
           COALESCE(SUM(due), 0) AS totalDue,
@@ -1227,21 +1150,20 @@ export class HisabStorage {
           COUNT(id) AS itemCount,
           MIN(date) AS minDate,
           MAX(date) AS maxDate,
-          1 AS dateCount,
+          COUNT(DISTINCT date) AS dateCount,
+          MIN(date) AS earliestDate,
           MIN(id) AS earliestId,
           MAX(id) AS maxId
         FROM hisab
         ${whereClause}
-        GROUP BY date, CASE WHEN INSTR(workDetails, '|') > 0 THEN TRIM(SUBSTR(workDetails, 1, INSTR(workDetails, '|') - 1)) ELSE TRIM(COALESCE(workDetails, '')) END
+        GROUP BY name, address, mobile, hisabType
         ORDER BY ${groupOrderBy};
       `;
     } else {
-      // When no work filter is selected, group purely by date
       groupSql = `
         SELECT 
-          date,
-          CASE WHEN COUNT(DISTINCT hisabType) = 1 THEN MIN(hisabType) ELSE '' END AS hisabType,
-          CASE WHEN COUNT(DISTINCT workDetails) = 1 THEN MIN(workDetails) ELSE '' END AS workDetails,
+          date, hisabType,
+          GROUP_CONCAT(DISTINCT workDetails) AS workDetails,
           COALESCE(SUM(bill), 0) AS totalBill,
           COALESCE(SUM(paid), 0) AS totalPaid,
           COALESCE(SUM(due), 0) AS totalDue,
@@ -1254,7 +1176,7 @@ export class HisabStorage {
           MAX(id) AS maxId
         FROM hisab
         ${whereClause}
-        GROUP BY date
+        GROUP BY date, hisabType
         ORDER BY ${groupOrderBy};
       `;
     }
@@ -1280,13 +1202,20 @@ export class HisabStorage {
         ymd = Utils.calculateYMDFromStartEnd(minDate, maxDate);
       }
 
+      let rawWorkDetails = String(row.workDetails || '');
+      // SQLite GROUP_CONCAT with DISTINCT doesn't support custom separator in all versions
+      // So we replace default comma with pipe in JS
+      if (rawWorkDetails.includes(',')) {
+        rawWorkDetails = rawWorkDetails.split(',').map(s => s.trim()).filter(Boolean).join('###');
+      }
+
       const groupedItem: GroupedHisab = {
         name: isUserDetails ? String(row.name || '') : '',
         date: !isUserDetails ? String(row.date || '') : '',
         hisabType: String(row.hisabType || ''),
         address: isUserDetails ? String(row.address || '') : '',
         mobile: isUserDetails ? String(row.mobile || '') : '',
-        workDetails: String(row.workDetails || ''),
+        workDetails: rawWorkDetails,
         totalBill: Number(row.totalBill || 0),
         totalPaid: Number(row.totalPaid || 0),
         totalDue: Number(row.totalDue || 0),
@@ -1303,14 +1232,9 @@ export class HisabStorage {
         items: []
       };
 
-      const groupWork = (Utils.parseWorkDetails(groupedItem.workDetails || '').work.trim() || String(row.mainWork || '').trim());
       const key = isUserDetails
-        ? (hasWorkFilter
-            ? `${groupedItem.name.trim()}_${groupedItem.hisabType.trim()}_${groupedItem.address.trim()}_${groupedItem.mobile.trim()}_${groupedItem.workDetails.trim()}`
-            : `${groupedItem.name.trim()}_${groupedItem.address.trim()}_${groupedItem.mobile.trim()}`)
-        : (hasWorkFilter
-            ? `${groupedItem.date.trim()}_${groupWork}`
-            : `${groupedItem.date.trim()}`);
+        ? `${groupedItem.name.trim()}_${groupedItem.address.trim()}_${groupedItem.mobile.trim()}_${groupedItem.hisabType.trim()}`
+        : `${groupedItem.date.trim()}_${groupedItem.hisabType.trim()}`;
 
       groups.push(groupedItem);
       groupKeyMap.set(key, groupedItem);
@@ -1348,14 +1272,9 @@ export class HisabStorage {
 
     while (childStmt.step()) {
       const item = childStmt.getAsObject() as unknown as VehicleHisab;
-      const itemWork = Utils.parseWorkDetails(item.workDetails || '').work.trim();
       const key = isUserDetails
-        ? (hasWorkFilter
-            ? `${(item.name || '').trim()}_${(item.hisabType || '').trim()}_${(item.address || '').trim()}_${(item.mobile || '').trim()}_${(item.workDetails || '').trim()}`
-            : `${(item.name || '').trim()}_${(item.address || '').trim()}_${(item.mobile || '').trim()}`)
-        : (hasWorkFilter
-            ? `${(item.date || '').trim()}_${itemWork}`
-            : `${(item.date || '').trim()}`);
+        ? `${(item.name || '').trim()}_${(item.address || '').trim()}_${(item.mobile || '').trim()}_${(item.hisabType || '').trim()}`
+        : `${(item.date || '').trim()}_${(item.hisabType || '').trim()}`;
 
       const grp = groupKeyMap.get(key);
       if (grp) {

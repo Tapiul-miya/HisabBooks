@@ -28,35 +28,19 @@ export const GroupInfoEditModal: React.FC<GroupInfoEditModalProps> = ({
   const [mobile, setMobile] = useState(group.mobile || firstItem?.mobile || '');
   const [address, setAddress] = useState(group.address || firstItem?.address || '');
   const [workDetails, setWorkDetails] = useState(initialParsed.work);
-  const [year, setYear] = useState(initialParsed.year);
-  const [session, setSession] = useState(initialParsed.session);
-  const [managerName, setManagerName] = useState(initialParsed.manager);
-  const [vehicleName, setVehicleName] = useState(initialParsed.vehicle);
-  const [driverName, setDriverName] = useState(initialParsed.driver);
-  const [trolleyBed, setTrolleyBed] = useState(initialParsed.trolleyBed);
+  const year = initialParsed.year;
+  const session = initialParsed.session;
+  const managerName = initialParsed.manager;
+  const vehicleName = initialParsed.vehicle;
+  const driverName = initialParsed.driver;
+  const trolleyBed = initialParsed.trolleyBed;
 
   const [allEntries, setAllEntries] = useState<VehicleHisab[]>([]);
 
   const [showWorkSuggestions, setShowWorkSuggestions] = useState(false);
   const workContainerRef = useRef<HTMLDivElement>(null);
 
-  const [showYearSuggestions, setShowYearSuggestions] = useState(false);
-  const yearContainerRef = useRef<HTMLDivElement>(null);
 
-  const [showSessionSuggestions, setShowSessionSuggestions] = useState(false);
-  const sessionContainerRef = useRef<HTMLDivElement>(null);
-
-  const [showManagerSuggestions, setShowManagerSuggestions] = useState(false);
-  const managerContainerRef = useRef<HTMLDivElement>(null);
-
-  const [showVehicleSuggestions, setShowVehicleSuggestions] = useState(false);
-  const vehicleContainerRef = useRef<HTMLDivElement>(null);
-
-  const [showDriverSuggestions, setShowDriverSuggestions] = useState(false);
-  const driverContainerRef = useRef<HTMLDivElement>(null);
-
-  const [showTrolleyBedSuggestions, setShowTrolleyBedSuggestions] = useState(false);
-  const trolleyBedContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     HisabStorage.getAll().then(setAllEntries).catch(console.error);
@@ -66,12 +50,6 @@ export const GroupInfoEditModal: React.FC<GroupInfoEditModalProps> = ({
     const handleClickOutside = (e: MouseEvent | TouchEvent) => {
       const target = e.target as Node;
       if (workContainerRef.current && !workContainerRef.current.contains(target)) setShowWorkSuggestions(false);
-      if (yearContainerRef.current && !yearContainerRef.current.contains(target)) setShowYearSuggestions(false);
-      if (sessionContainerRef.current && !sessionContainerRef.current.contains(target)) setShowSessionSuggestions(false);
-      if (managerContainerRef.current && !managerContainerRef.current.contains(target)) setShowManagerSuggestions(false);
-      if (vehicleContainerRef.current && !vehicleContainerRef.current.contains(target)) setShowVehicleSuggestions(false);
-      if (driverContainerRef.current && !driverContainerRef.current.contains(target)) setShowDriverSuggestions(false);
-      if (trolleyBedContainerRef.current && !trolleyBedContainerRef.current.contains(target)) setShowTrolleyBedSuggestions(false);
     };
     document.addEventListener('mousedown', handleClickOutside);
     document.addEventListener('touchstart', handleClickOutside);
@@ -95,89 +73,7 @@ export const GroupInfoEditModal: React.FC<GroupInfoEditModalProps> = ({
     return list.filter(w => w.toLowerCase().includes(q)).slice(0, 8);
   }, [allEntries, workDetails]);
 
-  const yearSuggestions = useMemo(() => {
-    const q = year.trim().toLowerCase();
-    if (!q) return [];
-    const set = new Set<string>();
-    for (const item of allEntries) {
-      if (item.workDetails && item.workDetails.includes('|')) {
-        const parts = item.workDetails.split('|').map(p => p.trim());
-        if (parts[1]) set.add(parts[1]);
-      }
-    }
-    const list = Array.from(set).filter(Boolean);
-    return list.filter(y => y.toLowerCase().includes(q)).slice(0, 8);
-  }, [allEntries, year]);
 
-  const sessionSuggestions = useMemo(() => {
-    const q = session.trim().toLowerCase();
-    if (!q) return [];
-    const set = new Set<string>();
-    for (const item of allEntries) {
-      if (item.workDetails && item.workDetails.includes('|')) {
-        const parts = item.workDetails.split('|').map(p => p.trim());
-        if (parts[2]) set.add(parts[2]);
-      }
-    }
-    const list = Array.from(set).filter(Boolean);
-    return list.filter(s => s.toLowerCase().includes(q)).slice(0, 8);
-  }, [allEntries, session]);
-
-  const managerSuggestions = useMemo(() => {
-    const q = managerName.trim().toLowerCase();
-    if (!q) return [];
-    const set = new Set<string>();
-    for (const item of allEntries) {
-      if (item.workDetails && item.workDetails.includes('|')) {
-        const parts = item.workDetails.split('|').map(p => p.trim());
-        if (parts[3]) set.add(parts[3]);
-      }
-    }
-    const list = Array.from(set).filter(Boolean);
-    return list.filter(m => m.toLowerCase().includes(q)).slice(0, 8);
-  }, [allEntries, managerName]);
-
-  const vehicleSuggestions = useMemo(() => {
-    const q = vehicleName.trim().toLowerCase();
-    if (!q) return [];
-    const set = new Set<string>();
-    for (const item of allEntries) {
-      if (item.workDetails && item.workDetails.includes('|')) {
-        const parts = item.workDetails.split('|').map(p => p.trim());
-        if (parts[4]) set.add(parts[4]);
-      }
-    }
-    const list = Array.from(set).filter(Boolean);
-    return list.filter(v => v.toLowerCase().includes(q)).slice(0, 8);
-  }, [allEntries, vehicleName]);
-
-  const driverSuggestions = useMemo(() => {
-    const q = driverName.trim().toLowerCase();
-    if (!q) return [];
-    const set = new Set<string>();
-    for (const item of allEntries) {
-      if (item.workDetails && item.workDetails.includes('|')) {
-        const parts = item.workDetails.split('|').map(p => p.trim());
-        if (parts[5]) set.add(parts[5]);
-      }
-    }
-    const list = Array.from(set).filter(Boolean);
-    return list.filter(d => d.toLowerCase().includes(q)).slice(0, 8);
-  }, [allEntries, driverName]);
-
-  const trolleyBedSuggestions = useMemo(() => {
-    const q = trolleyBed.trim().toLowerCase();
-    if (!q) return [];
-    const set = new Set<string>();
-    for (const item of allEntries) {
-      if (item.workDetails && item.workDetails.includes('|')) {
-        const parts = item.workDetails.split('|').map(p => p.trim());
-        if (parts[6]) set.add(parts[6]);
-      }
-    }
-    const list = Array.from(set).filter(Boolean);
-    return list.filter(b => b.toLowerCase().includes(q)).slice(0, 8);
-  }, [allEntries, trolleyBed]);
 
   const concatenatedWorkDetails = useMemo(() => {
     return Utils.formatWorkDetails(
@@ -352,247 +248,7 @@ export const GroupInfoEditModal: React.FC<GroupInfoEditModalProps> = ({
             )}
           </div>
 
-          {/* Sub-fields for Work Concatenation */}
-          <div className="bg-slate-50/90 border border-slate-200/90 rounded-2xl p-3 space-y-2.5">
-            <div className="grid grid-cols-2 gap-2.5">
-              {/* কত শাল */}
-              <div className="space-y-1 relative" ref={yearContainerRef}>
-                <label className="text-[11px] font-semibold text-slate-600 flex items-center gap-1">
-                  <Calendar size={12} className="text-[#0D47A1]" />
-                  <span>কত শাল</span>
-                </label>
-                <input
-                  type="text"
-                  value={year}
-                  onChange={(e) => {
-                    setYear(e.target.value);
-                    setShowYearSuggestions(true);
-                  }}
-                  onFocus={() => setShowYearSuggestions(true)}
-                  placeholder="যেমন: ২০২৪"
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0D47A1]/20 focus:border-[#0D47A1] min-h-[40px]"
-                />
-                {showYearSuggestions && yearSuggestions.length > 0 && (
-                  <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-36 overflow-y-auto divide-y divide-slate-100">
-                    {yearSuggestions.map((item, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => {
-                          setYear(item);
-                          setShowYearSuggestions(false);
-                        }}
-                        className="w-full text-left px-2.5 py-1.5 text-xs text-slate-700 hover:bg-blue-50 active:bg-blue-100 flex items-center justify-between transition-colors"
-                      >
-                        <span>{item}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
 
-              {/* কোন সেশন */}
-              <div className="space-y-1 relative" ref={sessionContainerRef}>
-                <label className="text-[11px] font-semibold text-slate-600 flex items-center gap-1">
-                  <Layers size={12} className="text-[#0D47A1]" />
-                  <span>কোন সেশন</span>
-                </label>
-                <input
-                  type="text"
-                  value={session}
-                  onChange={(e) => {
-                    setSession(e.target.value);
-                    setShowSessionSuggestions(true);
-                  }}
-                  onFocus={() => setShowSessionSuggestions(true)}
-                  placeholder="যেমন: রবি / খরিপ"
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0D47A1]/20 focus:border-[#0D47A1] min-h-[40px]"
-                />
-                {showSessionSuggestions && sessionSuggestions.length > 0 && (
-                  <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-36 overflow-y-auto divide-y divide-slate-100">
-                    {sessionSuggestions.map((item, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => {
-                          setSession(item);
-                          setShowSessionSuggestions(false);
-                        }}
-                        className="w-full text-left px-2.5 py-1.5 text-xs text-slate-700 hover:bg-blue-50 active:bg-blue-100 flex items-center justify-between transition-colors"
-                      >
-                        <span>{item}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* ম্যানেজারের নাম */}
-              <div className="space-y-1 relative" ref={managerContainerRef}>
-                <label className="text-[11px] font-semibold text-slate-600 flex items-center gap-1">
-                  <User size={12} className="text-[#0D47A1]" />
-                  <span>ম্যানেজারের নাম</span>
-                </label>
-                <input
-                  type="text"
-                  value={managerName}
-                  onChange={(e) => {
-                    setManagerName(e.target.value);
-                    setShowManagerSuggestions(true);
-                  }}
-                  onFocus={() => setShowManagerSuggestions(true)}
-                  placeholder="যেমন: আব্দুর রহিম"
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0D47A1]/20 focus:border-[#0D47A1] min-h-[40px]"
-                />
-                {showManagerSuggestions && managerSuggestions.length > 0 && (
-                  <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-36 overflow-y-auto divide-y divide-slate-100">
-                    {managerSuggestions.map((item, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => {
-                          setManagerName(item);
-                          setShowManagerSuggestions(false);
-                        }}
-                        className="w-full text-left px-2.5 py-1.5 text-xs text-slate-700 hover:bg-blue-50 active:bg-blue-100 flex items-center justify-between transition-colors"
-                      >
-                        <span>{item}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* গাড়ির নাম */}
-              <div className="space-y-1 relative" ref={vehicleContainerRef}>
-                <label className="text-[11px] font-semibold text-slate-600 flex items-center gap-1">
-                  <Tag size={12} className="text-[#0D47A1]" />
-                  <span>গাড়ির নাম</span>
-                </label>
-                <input
-                  type="text"
-                  value={vehicleName}
-                  onChange={(e) => {
-                    setVehicleName(e.target.value);
-                    setShowVehicleSuggestions(true);
-                  }}
-                  onFocus={() => setShowVehicleSuggestions(true)}
-                  placeholder="যেমন: ট্রাফি / ট্রাক"
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0D47A1]/20 focus:border-[#0D47A1] min-h-[40px]"
-                />
-                {showVehicleSuggestions && vehicleSuggestions.length > 0 && (
-                  <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-36 overflow-y-auto divide-y divide-slate-100">
-                    {vehicleSuggestions.map((item, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => {
-                          setVehicleName(item);
-                          setShowVehicleSuggestions(false);
-                        }}
-                        className="w-full text-left px-2.5 py-1.5 text-xs text-slate-700 hover:bg-blue-50 active:bg-blue-100 flex items-center justify-between transition-colors"
-                      >
-                        <span>{item}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* ড্রাইভার নাম */}
-              <div className="space-y-1 relative" ref={driverContainerRef}>
-                <label className="text-[11px] font-semibold text-slate-600 flex items-center gap-1">
-                  <User size={12} className="text-[#0D47A1]" />
-                  <span>ড্রাইভার নাম</span>
-                </label>
-                <input
-                  type="text"
-                  value={driverName}
-                  onChange={(e) => {
-                    setDriverName(e.target.value);
-                    setShowDriverSuggestions(true);
-                  }}
-                  onFocus={() => setShowDriverSuggestions(true)}
-                  placeholder="যেমন: ড্রাইভারের নাম"
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0D47A1]/20 focus:border-[#0D47A1] min-h-[40px]"
-                />
-                {showDriverSuggestions && driverSuggestions.length > 0 && (
-                  <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-36 overflow-y-auto divide-y divide-slate-100">
-                    {driverSuggestions.map((item, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => {
-                          setDriverName(item);
-                          setShowDriverSuggestions(false);
-                        }}
-                        className="w-full text-left px-2.5 py-1.5 text-xs text-slate-700 hover:bg-blue-50 active:bg-blue-100 flex items-center justify-between transition-colors"
-                      >
-                        <span>{item}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* বেড */}
-              <div className="space-y-1 relative" ref={trolleyBedContainerRef}>
-                <label className="text-[11px] font-semibold text-slate-600 flex items-center gap-1">
-                  <Briefcase size={12} className="text-[#0D47A1]" />
-                  <span>বেড</span>
-                </label>
-                <input
-                  type="text"
-                  value={trolleyBed}
-                  onChange={(e) => {
-                    setTrolleyBed(e.target.value);
-                    setShowTrolleyBedSuggestions(true);
-                  }}
-                  onFocus={() => setShowTrolleyBedSuggestions(true)}
-                  placeholder="যেমন: বেড সাইজ / তথ্য"
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0D47A1]/20 focus:border-[#0D47A1] min-h-[40px]"
-                />
-                {showTrolleyBedSuggestions && trolleyBedSuggestions.length > 0 && (
-                  <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-36 overflow-y-auto divide-y divide-slate-100">
-                    {trolleyBedSuggestions.map((item, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => {
-                          setTrolleyBed(item);
-                          setShowTrolleyBedSuggestions(false);
-                        }}
-                        className="w-full text-left px-2.5 py-1.5 text-xs text-slate-700 hover:bg-blue-50 active:bg-blue-100 flex items-center justify-between transition-colors"
-                      >
-                        <span>{item}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Live Concatenated Work Details Preview Box */}
-            <div className="pt-1.5 border-t border-slate-200/80">
-              <div className="text-[11px] font-bold text-blue-900 mb-1 flex items-center justify-between">
-                <span>একত্রিত কাজের বিবরণী (Work Details Preview):</span>
-                <span className="text-[10px] text-slate-400 font-normal">‘|’ চিহ্ন দ্বারা যুক্ত</span>
-              </div>
-              <div className="p-2.5 bg-blue-50/90 border border-blue-200/80 rounded-xl text-xs font-semibold text-blue-900 break-words min-h-[40px] flex items-center">
-                {concatenatedWorkDetails || (
-                  <span className="text-slate-400 font-normal italic">
-                    ইনপুট লেখার সাথে সাথে সব তথ্য এখানে যুক্ত হয়ে প্রদর্শিত হবে
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
 
           {/* Customer Name, Mobile, Address - Only in BY_USER_DETAILS mode */}
           {mode === GroupByMode.BY_USER_DETAILS && (

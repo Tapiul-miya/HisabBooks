@@ -155,8 +155,8 @@ export interface HisabCalculationResult {
 export function getGroupKey(groupedItem: GroupedHisab, mode: GroupByMode): string {
   const itemIds = groupedItem.items.map(i => i.id).sort().join('-');
   if (mode === GroupByMode.BY_USER_DETAILS) {
-    return `ud_${groupedItem.name.trim()}_${groupedItem.hisabType.trim()}_${groupedItem.address.trim()}_${groupedItem.mobile.trim()}_${groupedItem.workDetails.trim()}_${itemIds}`;
+    return `ud_${groupedItem.name.trim()}_${groupedItem.hisabType.trim()}_${groupedItem.address.trim()}_${groupedItem.mobile.trim()}_${itemIds}`;
   } else {
-    return `dw_${groupedItem.date.trim()}_${groupedItem.hisabType.trim()}_${groupedItem.workDetails.trim()}_${itemIds}`;
+    return `dw_${groupedItem.date.trim()}_${groupedItem.hisabType.trim()}_${itemIds}`;
   }
 }

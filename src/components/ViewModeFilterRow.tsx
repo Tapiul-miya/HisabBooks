@@ -46,7 +46,9 @@ export const ViewModeFilterRow: React.FC<ViewModeFilterRowProps> = ({
     (workDetailsOptions || []).forEach((work) => {
       if (work && work.trim()) {
         const parsed = Utils.parseWorkDetails(work);
-        if (parsed.work) set.add(parsed.work);
+        if (parsed.work) {
+          set.add(parsed.work);
+        }
       }
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'bn'));
