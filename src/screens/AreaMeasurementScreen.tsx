@@ -37,12 +37,16 @@ import {
   RefreshCw,
   Minus,
   WifiOff,
-  Radio
+  Radio,
+  Download,
+  Image as ImageIcon,
+  Share2
 } from 'lucide-react';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { toPng } from 'html-to-image';
 import { Utils } from '../util/utils';
 
 export type ShapeMode = 'gps_polygon' | 'quadrilateral' | 'triangle' | 'rectangle' | 'circle' | 'multi_plot' | 'converter';
@@ -311,6 +315,64 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
   const [inAppToast, setInAppToast] = useState<{ message: string; type: 'info' | 'success' | 'warning' } | null>(null);
   const [showHelpGuide, setShowHelpGuide] = useState<boolean>(false);
   const [showGpsMarkers, setShowGpsMarkers] = useState<boolean>(true);
+  const [isExporting, setIsExporting] = useState<boolean>(false);
+  const mapScreenshotRef = useRef<HTMLDivElement>(null);
+
+  const handleExportPng = async () => {
+    if (!mapScreenshotRef.current) return;
+    
+    if (sqFt <= 0) {
+      showToast('পরিমাপ সম্পন্ন না করে ছবি তৈরি করা যাবে না। কমপক্ষে ৩টি কোণা যোগ করুন।', 'warning');
+      return;
+    }
+
+    setIsExporting(true);
+    showToast('ম্যাপের ছবি (PNG) তৈরি করা হচ্ছে...', 'info');
+
+    try {
+      // Leaflet requires a longer delay to ensure all tiles are high-res
+      await new Promise(r => setTimeout(r, 1200));
+      
+      const dataUrl = await toPng(mapScreenshotRef.current, {
+        quality: 1.0,
+        cacheBust: true,
+        backgroundColor: '#0f172a', // Match map bg
+        pixelRatio: 2,
+        skipFonts: true,
+        fontEmbedCSS: '',
+        filter: (node: any) => {
+          // Extra safety: ensure we don't try to capture controls that should be hidden
+          const className = node.className || '';
+          if (typeof className === 'string' && (
+            className.includes('leaflet-control') || 
+            className.includes('zoom-control')
+          )) {
+            return false;
+          }
+          return true;
+        }
+      });
+
+      if (!dataUrl || dataUrl.length < 100) {
+         throw new Error('Image generation returned empty data');
+      }
+
+      const link = document.createElement('a');
+      const safeName = (customerName || 'Map_Report').trim().replace(/[^\w\s\u0980-\u09FF]/gi, '').replace(/\s+/g, '_');
+      link.download = `${safeName}_Map_${new Date().getTime()}.png`;
+      link.href = dataUrl;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      showToast('ম্যাপের ছবি সফলভাবে ডাউনলোড হয়েছে!', 'success');
+    } catch (err) {
+      console.error('PNG Export error:', err);
+      showToast('ছবি তৈরি করতে সমস্যা হয়েছে। দয়া করে আবার চেষ্টা করুন।', 'warning');
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const trackingSensitivityRef = useRef(trackingSensitivity);
   useEffect(() => {
@@ -626,7 +688,7 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
     });
 
     // Automatically disable auto-follow if user manually interacts with map
-    map.on('movestart', (e) => {
+    map.on('movestart', (e: any) => {
       if (e.originalEvent) { // Only trigger on manual user interaction
         setIsAutoFollow(false);
       }
@@ -678,49 +740,56 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
         const encodedSvg = `data:image/svg+xml;base64,${btoa(svgGrid)}`;
         tileLayerRef.current = L.tileLayer(encodedSvg, {
           maxZoom: 22,
-          minZoom: 1
+          minZoom: 1,
+          crossOrigin: 'anonymous'
         }).addTo(m);
       } else if (layerType === 'google_roadmap') {
         // High contrast Google Normal Vector Roadmap with clear roads and Bengali place names
         tileLayerRef.current = L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
           maxZoom: 22,
           maxNativeZoom: 20,
-          subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+          subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+          crossOrigin: 'anonymous'
         }).addTo(m);
       } else if (layerType === 'google_terrain') {
         // Google Terrain / Topo map showing land elevation and natural boundaries
         tileLayerRef.current = L.tileLayer('https://{s}.google.com/vt/lyrs=p&x={x}&y={y}&z={z}', {
           maxZoom: 22,
           maxNativeZoom: 20,
-          subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+          subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+          crossOrigin: 'anonymous'
         }).addTo(m);
       } else if (layerType === 'esri_sat') {
         // Esri Satellite base imagery with high native zoom scaling
         tileLayerRef.current = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
           maxZoom: 22,
           maxNativeZoom: 18,
-          subdomains: ['a', 'b', 'c']
+          subdomains: ['a', 'b', 'c'],
+          crossOrigin: 'anonymous'
         }).addTo(m);
 
         // Esri World Boundaries & Places Labels overlay for crisp road/place names
         labelLayerRef.current = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
           maxZoom: 22,
           maxNativeZoom: 18,
-          subdomains: ['a', 'b', 'c']
+          subdomains: ['a', 'b', 'c'],
+          crossOrigin: 'anonymous'
         }).addTo(m);
       } else if (layerType === 'osm_street') {
         // OpenStreetMap Street View
         tileLayerRef.current = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           maxZoom: 22,
           maxNativeZoom: 19,
-          subdomains: ['a', 'b', 'c']
+          subdomains: ['a', 'b', 'c'],
+          crossOrigin: 'anonymous'
         }).addTo(m);
       } else {
         // Google Hybrid Satellite + Roads
         tileLayerRef.current = L.tileLayer('https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
           maxZoom: 22,
           maxNativeZoom: 20,
-          subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+          subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+          crossOrigin: 'anonymous'
         }).addTo(m);
       }
     };
@@ -777,43 +846,50 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
       const encodedSvg = `data:image/svg+xml;base64,${btoa(svgGrid)}`;
       tileLayerRef.current = L.tileLayer(encodedSvg, {
         maxZoom: 22,
-        minZoom: 1
+        minZoom: 1,
+        crossOrigin: 'anonymous'
       }).addTo(map);
     } else if (mapLayerType === 'google_roadmap') {
       tileLayerRef.current = L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
         maxZoom: 22,
         maxNativeZoom: 20,
-        subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+        subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+        crossOrigin: 'anonymous'
       }).addTo(map);
     } else if (mapLayerType === 'google_terrain') {
       tileLayerRef.current = L.tileLayer('https://{s}.google.com/vt/lyrs=p&x={x}&y={y}&z={z}', {
         maxZoom: 22,
         maxNativeZoom: 20,
-        subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+        subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+        crossOrigin: 'anonymous'
       }).addTo(map);
     } else if (mapLayerType === 'esri_sat') {
       tileLayerRef.current = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
         maxZoom: 22,
         maxNativeZoom: 18,
-        subdomains: ['a', 'b', 'c']
+        subdomains: ['a', 'b', 'c'],
+        crossOrigin: 'anonymous'
       }).addTo(map);
 
       labelLayerRef.current = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
         maxZoom: 22,
         maxNativeZoom: 18,
-        subdomains: ['a', 'b', 'c']
+        subdomains: ['a', 'b', 'c'],
+        crossOrigin: 'anonymous'
       }).addTo(map);
     } else if (mapLayerType === 'osm_street') {
       tileLayerRef.current = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 22,
         maxNativeZoom: 19,
-        subdomains: ['a', 'b', 'c']
+        subdomains: ['a', 'b', 'c'],
+        crossOrigin: 'anonymous'
       }).addTo(map);
     } else {
       tileLayerRef.current = L.tileLayer('https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
         maxZoom: 22,
         maxNativeZoom: 20,
-        subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+        subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+        crossOrigin: 'anonymous'
       }).addTo(map);
     }
   }, [mapLayerType]);
@@ -1977,8 +2053,35 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
               </div>
             )}
 
-            {/* Interactive Leaflet Map Container */}
-            <div className="relative rounded-xl overflow-hidden border border-slate-300 shadow-inner bg-slate-800 min-h-[380px] -mx-1 sm:mx-0">
+            {/* Interactive Leaflet Map Wrapper for Export */}
+            <div 
+              ref={mapScreenshotRef}
+              className="relative rounded-xl overflow-hidden border border-slate-300 shadow-inner bg-slate-800 -mx-1 sm:mx-0"
+            >
+              {/* Map Layout Metadata Overlay (Visible only during export) - Wrapping Metadata */}
+              {isExporting && (
+                <div className="absolute top-0 left-0 w-full z-40 px-3 py-2 pointer-events-none bg-black/60 backdrop-blur-[2px]">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[10px] font-bold text-white">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-slate-400 font-medium">Date:</span>
+                      <span className="text-white">{new Date().toLocaleDateString('bn-BD')}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="text-slate-400 font-medium shrink-0">Name:</span>
+                      <span className="text-emerald-300 break-words line-clamp-2">{customerName || 'সাধারণ পরিমাপ'}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-slate-400 font-medium">Area:</span>
+                      <span className="text-emerald-300">{bighaBreakdown}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-slate-400 font-medium font-mono">SCF:</span>
+                      <span className="text-white font-black">{Utils.toCleanString(sqFt)}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div
                 ref={mapContainerRef}
                 id="gps-land-survey-map-container"
@@ -1987,88 +2090,92 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
                 }`}
               />
 
-              {/* Top Map Overlay Badges */}
-              <div className="absolute top-2 left-2 z-20 flex flex-wrap gap-1.5 pointer-events-none">
-                <div className="bg-black/75 backdrop-blur-xs text-white text-[10.5px] px-2 py-0.5 rounded-md font-medium flex items-center gap-1 shadow-md">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                  <span>কোণা: {gpsPoints.length} টি</span>
+              {/* Top Map Overlay Badges (Hidden during export to keep map clean) */}
+              {!isExporting && (
+                <div className="absolute top-2 left-2 z-20 flex flex-wrap gap-1.5 pointer-events-none">
+                  <div className="bg-black/75 backdrop-blur-xs text-white text-[10.5px] px-2 py-0.5 rounded-md font-medium flex items-center gap-1 shadow-md">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                    <span>কোণা: {gpsPoints.length} টি</span>
+                  </div>
+                  {mapLayerType === 'offline_canvas' && (
+                    <div className="bg-amber-900/85 backdrop-blur-xs text-amber-200 border border-amber-400/40 text-[10.5px] px-2 py-0.5 rounded-md font-bold flex items-center gap-1 shadow-md">
+                      <WifiOff size={11} className="text-amber-300" />
+                      <span>অফলাইন মোড</span>
+                    </div>
+                  )}
+                  {isGpsOff && (
+                    <div className="bg-rose-950/85 backdrop-blur-xs text-rose-300 border border-rose-500/40 text-[10.5px] px-2 py-0.5 rounded-md font-bold flex items-center gap-1 shadow-md">
+                      <WifiOff size={11} className="text-rose-400" />
+                      <span>জিপিএস বন্ধ (GPS Off)</span>
+                    </div>
+                  )}
                 </div>
-                {mapLayerType === 'offline_canvas' && (
-                  <div className="bg-amber-900/85 backdrop-blur-xs text-amber-200 border border-amber-400/40 text-[10.5px] px-2 py-0.5 rounded-md font-bold flex items-center gap-1 shadow-md">
-                    <WifiOff size={11} className="text-amber-300" />
-                    <span>অফলাইন মোড</span>
-                  </div>
-                )}
-                {isGpsOff && (
-                  <div className="bg-rose-950/85 backdrop-blur-xs text-rose-300 border border-rose-500/40 text-[10.5px] px-2 py-0.5 rounded-md font-bold flex items-center gap-1 shadow-md">
-                    <WifiOff size={11} className="text-rose-400" />
-                    <span>জিপিএস বন্ধ (GPS Off)</span>
-                  </div>
-                )}
-              </div>
+              )}
 
-              {/* Map Floating Control Buttons (Right Side) */}
-              <div className="absolute top-2 right-2 z-20 flex flex-col space-y-1.5">
-                <button
-                  type="button"
-                  onClick={handleLocateMe}
-                  disabled={isLocating}
-                  className="bg-white/95 hover:bg-white text-slate-800 p-2 rounded-lg shadow-md border border-slate-200/80 active:scale-95 transition-all flex items-center justify-center disabled:opacity-60"
-                  title="আমার বর্তমান অবস্থান (Locate Me)"
-                >
-                  <Crosshair size={17} className={`text-blue-600 ${isLocating ? 'animate-spin' : ''}`} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => mapInstanceRef.current?.zoomIn()}
-                  className="bg-white/95 hover:bg-white text-slate-800 p-2 rounded-lg shadow-md border border-slate-200/80 active:scale-95 transition-all flex items-center justify-center"
-                  title="জুম ইন (+)"
-                >
-                  <Plus size={16} className="text-slate-800" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => mapInstanceRef.current?.zoomOut()}
-                  className="bg-white/95 hover:bg-white text-slate-800 p-2 rounded-lg shadow-md border border-slate-200/80 active:scale-95 transition-all flex items-center justify-center"
-                  title="জুম আউট (-)"
-                >
-                  <Minus size={16} className="text-slate-800" />
-                </button>
-                {gpsPoints.length >= 2 && (
+              {/* Map Floating Control Buttons (Right Side) (Hidden during export) */}
+              {!isExporting && (
+                <div className="absolute top-2 right-2 z-20 flex flex-col space-y-1.5">
                   <button
                     type="button"
-                    onClick={handleFitPolygon}
-                    className="bg-white/95 hover:bg-white text-slate-800 p-2 rounded-lg shadow-md border border-slate-200/80 active:scale-95 transition-all flex items-center justify-center"
-                    title="পুরো পলিগন ভিউ (Fit Polygon)"
+                    onClick={handleLocateMe}
+                    disabled={isLocating}
+                    className="bg-white/95 hover:bg-white text-slate-800 p-2 rounded-lg shadow-md border border-slate-200/80 active:scale-95 transition-all flex items-center justify-center disabled:opacity-60"
+                    title="আমার বর্তমান অবস্থান (Locate Me)"
                   >
-                    <Maximize2 size={17} className="text-emerald-700" />
+                    <Crosshair size={17} className={`text-blue-600 ${isLocating ? 'animate-spin' : ''}`} />
                   </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setShowGpsMarkers(!showGpsMarkers)}
-                  className={`p-2 rounded-lg shadow-md border active:scale-95 transition-all flex items-center justify-center ${
-                    showGpsMarkers 
-                      ? 'bg-blue-50 border-blue-200 text-blue-700' 
-                      : 'bg-white/95 border-slate-200/80 text-slate-500'
-                  }`}
-                  title={showGpsMarkers ? 'পয়েন্ট পিন লুকান' : 'পয়েন্ট পিন দেখান'}
-                >
-                  {showGpsMarkers ? <Eye size={17} /> : <Eye size={17} className="opacity-50" />}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsAutoFollow(!isAutoFollow)}
-                  className={`p-2 rounded-lg shadow-md border active:scale-95 transition-all flex items-center justify-center ${
-                    isAutoFollow 
-                      ? 'bg-blue-600 border-blue-700 text-white' 
-                      : 'bg-white/95 border-slate-200/80 text-slate-500'
-                  }`}
-                  title={isAutoFollow ? 'অটো-ফলো বন্ধ করুন' : 'অটো-ফলো চালু করুন'}
-                >
-                  <Navigation size={17} className={isAutoFollow ? 'animate-pulse' : ''} />
-                </button>
-              </div>
+                  <button
+                    type="button"
+                    onClick={() => mapInstanceRef.current?.zoomIn()}
+                    className="bg-white/95 hover:bg-white text-slate-800 p-2 rounded-lg shadow-md border border-slate-200/80 active:scale-95 transition-all flex items-center justify-center"
+                    title="জুম ইন (+)"
+                  >
+                    <Plus size={16} className="text-slate-800" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => mapInstanceRef.current?.zoomOut()}
+                    className="bg-white/95 hover:bg-white text-slate-800 p-2 rounded-lg shadow-md border border-slate-200/80 active:scale-95 transition-all flex items-center justify-center"
+                    title="জুম আউট (-)"
+                  >
+                    <Minus size={16} className="text-slate-800" />
+                  </button>
+                  {gpsPoints.length >= 2 && (
+                    <button
+                      type="button"
+                      onClick={handleFitPolygon}
+                      className="bg-white/95 hover:bg-white text-slate-800 p-2 rounded-lg shadow-md border border-slate-200/80 active:scale-95 transition-all flex items-center justify-center"
+                      title="পুরো পলিগন ভিউ (Fit Polygon)"
+                    >
+                      <Maximize2 size={17} className="text-emerald-700" />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setShowGpsMarkers(!showGpsMarkers)}
+                    className={`p-2 rounded-lg shadow-md border active:scale-95 transition-all flex items-center justify-center ${
+                      showGpsMarkers 
+                        ? 'bg-blue-50 border-blue-200 text-blue-700' 
+                        : 'bg-white/95 border-slate-200/80 text-slate-500'
+                    }`}
+                    title={showGpsMarkers ? 'পয়েন্ট পিন লুকান' : 'পয়েন্ট পিন দেখান'}
+                  >
+                    {showGpsMarkers ? <Eye size={17} /> : <Eye size={17} className="opacity-50" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsAutoFollow(!isAutoFollow)}
+                    className={`p-2 rounded-lg shadow-md border active:scale-95 transition-all flex items-center justify-center ${
+                      isAutoFollow 
+                        ? 'bg-blue-600 border-blue-700 text-white' 
+                        : 'bg-white/95 border-slate-200/80 text-slate-500'
+                    }`}
+                    title={isAutoFollow ? 'অটো-ফলো বন্ধ করুন' : 'অটো-ফলো চালু করুন'}
+                  >
+                    <Navigation size={17} className={isAutoFollow ? 'animate-pulse' : ''} />
+                  </button>
+                </div>
+              )}
             </div>
 
 
@@ -2200,61 +2307,6 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
 
 
 
-            {/* Polygon Sides and Coordinate Breakdown (Collapsible / List) */}
-            {gpsPoints.length > 0 && !isGpsTracking && (
-              <div className="bg-slate-50 rounded-xl p-2.5 border border-slate-200/80 space-y-1.5">
-                <div className="flex items-center justify-between text-xs font-bold text-slate-700">
-                  <span className="flex items-center gap-1">
-                    <Navigation size={13} className="text-emerald-700" />
-                    <span>পলিগন কোণা ও বাহুর মাপ ({gpsPoints.length}টি পয়েন্ট):</span>
-                  </span>
-                  {calculatedSqFt.perimeterFeet > 0 && (
-                    <span className="text-[11px] text-emerald-800 font-semibold bg-emerald-100 px-2 py-0.5 rounded-full">
-                      মোট সীমানা: {Utils.toCleanString(calculatedSqFt.perimeterFeet)} ফুট ({Utils.toCleanString(calculatedSqFt.perimeterFeet / 3.28084)} মিটার)
-                    </span>
-                  )}
-                </div>
-
-                <div className="max-h-28 overflow-y-auto space-y-1 pr-1">
-                  {gpsPoints.map((pt, idx) => {
-                    const nextIdx = (idx + 1) % gpsPoints.length;
-                    const nextPt = gpsPoints[nextIdx];
-                    const distM = gpsPoints.length > 1 ? haversineDistanceMeters(pt.lat, pt.lng, nextPt.lat, nextPt.lng) : 0;
-                    const distFt = distM * 3.28084;
-
-                    return (
-                      <div
-                        key={pt.id}
-                        className="flex items-center justify-between bg-white px-2 py-1 rounded-lg border border-slate-200 text-[11px]"
-                      >
-                        <div className="flex items-center space-x-1.5">
-                          <span className="w-4 h-4 rounded-full bg-slate-800 text-white text-[9px] font-bold flex items-center justify-center">
-                            {idx + 1}
-                          </span>
-                          <span className="text-slate-600 font-mono text-[10px]">
-                            {pt.lat.toFixed(5)}, {pt.lng.toFixed(5)}
-                          </span>
-                        </div>
-
-                        {gpsPoints.length > 1 && (
-                          <div className="text-emerald-800 font-semibold text-[10.5px]">
-                            বাহু {idx + 1} ➔ {nextIdx + 1}: <span className="font-bold">{Utils.toCleanString(distFt)}</span> ফুট ({Utils.toCleanString(distM)} মি)
-                          </div>
-                        )}
-
-                        <button
-                          onClick={() => setGpsPoints(prev => prev.filter(p => p.id !== pt.id))}
-                          className="text-slate-400 hover:text-rose-600 p-0.5 transition-colors"
-                          title="এই পয়েন্টটি বাদ দিন"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
           </div>
         )}
 
@@ -2916,11 +2968,11 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
           </div>
 
           {/* Action Buttons: Save, Copy, Add to Hisab */}
-          <div className="grid grid-cols-3 gap-2 pt-1">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
             <button
               onClick={handleSaveRecord}
               disabled={sqFt <= 0}
-              className="flex items-center justify-center space-x-1 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 text-white py-2 px-2 rounded-xl text-xs font-semibold shadow-xs transition-colors"
+              className="flex items-center justify-center space-x-1 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 text-white py-2 px-1.5 rounded-xl text-xs font-semibold shadow-xs transition-colors"
             >
               <Save size={14} />
               <span>সংরক্ষণ</span>
@@ -2929,22 +2981,32 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
             <button
               onClick={handleCopySummary}
               disabled={sqFt <= 0}
-              className="flex items-center justify-center space-x-1 bg-emerald-800 hover:bg-emerald-700 disabled:opacity-50 text-white py-2 px-2 rounded-xl text-xs font-semibold shadow-xs transition-colors"
+              className="flex items-center justify-center space-x-1 bg-emerald-800 hover:bg-emerald-700 disabled:opacity-50 text-white py-2 px-1.5 rounded-xl text-xs font-semibold shadow-xs transition-colors"
             >
               {copiedText ? <Check size={14} className="text-emerald-300" /> : <Copy size={14} />}
               <span>{copiedText ? 'কপি হয়েছে' : 'কপি করুন'}</span>
             </button>
 
             <button
+              onClick={handleExportPng}
+              disabled={isExporting}
+              className="flex items-center justify-center space-x-1 bg-blue-700 hover:bg-blue-600 disabled:opacity-50 text-white py-2 px-1.5 rounded-xl text-xs font-semibold shadow-xs transition-colors"
+            >
+              {isExporting ? <RefreshCw size={14} className="animate-spin" /> : <ImageIcon size={14} />}
+              <span>ছবি (PNG)</span>
+            </button>
+
+            <button
               onClick={handleSendToHisabBook}
               disabled={sqFt <= 0}
-              className="flex items-center justify-center space-x-1 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 py-2 px-2 rounded-xl text-xs font-bold shadow-md transition-colors"
+              className="flex items-center justify-center space-x-1 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 py-2 px-1.5 rounded-xl text-xs font-bold shadow-md transition-colors"
             >
               <FileSpreadsheet size={14} />
-              <span>হিসাব খাতায়</span>
+              <span>খাতায় যোগ</span>
             </button>
           </div>
         </div>
+
       </main>
 
       {/* SAVED MEASUREMENTS MODAL */}

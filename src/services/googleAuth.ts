@@ -7,7 +7,9 @@ import {
   GoogleAuthProvider,
   onAuthStateChanged,
   User,
-  signOut
+  signOut,
+  initializeAuth,
+  browserLocalPersistence
 } from 'firebase/auth';
 import { Capacitor } from '@capacitor/core';
 import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
@@ -15,7 +17,9 @@ import firebaseConfig from '../../firebase-applet-config.json';
 
 // ১. ফায়ারবেস অ্যাপ ও অথ ইনিশিয়ালাইজেশন
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-export const auth = getAuth(app);
+export const auth = initializeAuth(app, {
+  persistence: browserLocalPersistence
+});
 
 // ২. নেটিভ গুগল-অথ ইনিশিয়ালাইজেশন
 let isGoogleAuthInitialized = false;
