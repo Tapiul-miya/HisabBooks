@@ -43,6 +43,8 @@ import {
   Share2
 } from 'lucide-react';
 import { Geolocation } from '@capacitor/geolocation';
+import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
 import { Capacitor } from '@capacitor/core';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -357,15 +359,42 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
          throw new Error('Image generation returned empty data');
       }
 
-      const link = document.createElement('a');
-      const safeName = (customerName || 'Map_Report').trim().replace(/[^\w\s\u0980-\u09FF]/gi, '').replace(/\s+/g, '_');
-      link.download = `${safeName}_Map_${new Date().getTime()}.png`;
-      link.href = dataUrl;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      showToast('ম্যাপের ছবি সফলভাবে ডাউনলোড হয়েছে!', 'success');
+      const fileName = `${(customerName || 'Map_Report').trim().replace(/[^\w\s\u0980-\u09FF]/gi, '').replace(/\s+/g, '_')}_Map_${new Date().getTime()}.png`;
+
+      // Native Device Handling (Android/iOS)
+      if (Capacitor.isNativePlatform()) {
+        try {
+          // Write base64 data to cache directory
+          const base64Data = dataUrl.split(',')[1];
+          const savedFile = await Filesystem.writeFile({
+            path: fileName,
+            data: base64Data,
+            directory: Directory.Cache
+          });
+
+          // Open Share Sheet
+          await Share.share({
+            title: 'Land Measurement Report',
+            text: `${customerName || 'Client'} - Land Measurement Data`,
+            url: savedFile.uri,
+            dialogTitle: 'ছবিটি সেভ বা শেয়ার করুন'
+          });
+          
+          showToast('শেয়ার মেনু ওপেন হয়েছে!', 'success');
+        } catch (nativeErr) {
+          console.error('Capacitor File/Share Error:', nativeErr);
+          throw new Error('Native saving failed');
+        }
+      } else {
+        // Web Browser Handling
+        const link = document.createElement('a');
+        link.download = fileName;
+        link.href = dataUrl;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        showToast('ম্যাপের ছবি সফলভাবে ডাউনলোড হয়েছে!', 'success');
+      }
     } catch (err) {
       console.error('PNG Export error:', err);
       showToast('ছবি তৈরি করতে সমস্যা হয়েছে। দয়া করে আবার চেষ্টা করুন।', 'warning');
