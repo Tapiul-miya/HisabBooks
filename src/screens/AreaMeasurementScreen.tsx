@@ -310,6 +310,7 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
   const [mapReloadKey, setMapReloadKey] = useState<number>(0);
   const [inAppToast, setInAppToast] = useState<{ message: string; type: 'info' | 'success' | 'warning' } | null>(null);
   const [showHelpGuide, setShowHelpGuide] = useState<boolean>(false);
+  const [showGpsMarkers, setShowGpsMarkers] = useState<boolean>(true);
 
   const trackingSensitivityRef = useRef(trackingSensitivity);
   useEffect(() => {
@@ -624,6 +625,13 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
       }
     });
 
+    // Automatically disable auto-follow if user manually interacts with map
+    map.on('movestart', (e) => {
+      if (e.originalEvent) { // Only trigger on manual user interaction
+        setIsAutoFollow(false);
+      }
+    });
+
     // Add click event on map to add vertex point
     map.on('click', (e: L.LeafletMouseEvent) => {
       const newPoint: GpsPoint = {
@@ -921,7 +929,7 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
     }
 
     // 3. Draw Numbered Corner Markers (Only when not actively auto walk-tracking, to keep map clean with only polyline)
-    if (!isGpsTracking) {
+    if (!isGpsTracking && showGpsMarkers) {
       gpsPoints.forEach((point, index) => {
         const isFirst = index === 0;
         const isLast = index === gpsPoints.length - 1 && gpsPoints.length > 1;
@@ -979,27 +987,28 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
     }
 
     // Auto-fit bounds when walk tracking is active so the polyline area is clearly visible
-    if (isGpsTracking) {
+    if (isGpsTracking && isAutoFollow) {
       const allCoords: [number, number][] = gpsPoints.map(p => [p.lat, p.lng]);
       if (currentGpsPos && currentGpsPos.source !== 'ip') {
         allCoords.push([currentGpsPos.lat, currentGpsPos.lng]);
       }
       if (allCoords.length >= 2) {
         const bounds = L.latLngBounds(allCoords);
-        map.fitBounds(bounds, { padding: [45, 45], maxZoom: 20, animate: true });
+        map.fitBounds(bounds, { padding: [45, 45], maxZoom: 18.5, animate: true });
       } else if (allCoords.length === 1) {
-        map.flyTo(allCoords[0], 19, { animate: true });
+        map.flyTo(allCoords[0], 18, { animate: true });
       }
     }
-  }, [gpsPoints, currentGpsPos, activeTab, isGpsTracking]);
+  }, [gpsPoints, currentGpsPos, activeTab, isGpsTracking, showGpsMarkers, isAutoFollow]);
 
   // Center map on user location
   const handleLocateMe = async () => {
     setIsLocating(true);
 
     if (currentGpsPos && currentGpsPos.source !== 'ip' && mapInstanceRef.current) {
+      setIsAutoFollow(true);
       mapInstanceRef.current.flyTo([currentGpsPos.lat, currentGpsPos.lng], 19, { animate: true });
-      showToast('বর্তমান অবস্থানে ম্যাপ ফোকাস করা হয়েছে', 'success');
+      showToast('বর্তমান অবস্থানে ম্যাপ ফোকাস ও অটো-ফলো চালু হয়েছে', 'success');
       setIsLocating(false);
       return;
     }
@@ -1011,6 +1020,7 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
       setCurrentGpsPos({ lat: loc.lat, lng: loc.lng, accuracy: loc.accuracy, source: loc.source });
       setIsGpsOff(false);
       setGpsError(null);
+      setIsAutoFollow(true);
 
       if (mapInstanceRef.current) {
         mapInstanceRef.current.flyTo([loc.lat, loc.lng], loc.source === 'ip' ? 14 : 19, { animate: true });
@@ -2034,6 +2044,30 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
                     <Maximize2 size={17} className="text-emerald-700" />
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={() => setShowGpsMarkers(!showGpsMarkers)}
+                  className={`p-2 rounded-lg shadow-md border active:scale-95 transition-all flex items-center justify-center ${
+                    showGpsMarkers 
+                      ? 'bg-blue-50 border-blue-200 text-blue-700' 
+                      : 'bg-white/95 border-slate-200/80 text-slate-500'
+                  }`}
+                  title={showGpsMarkers ? 'পয়েন্ট পিন লুকান' : 'পয়েন্ট পিন দেখান'}
+                >
+                  {showGpsMarkers ? <Eye size={17} /> : <Eye size={17} className="opacity-50" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsAutoFollow(!isAutoFollow)}
+                  className={`p-2 rounded-lg shadow-md border active:scale-95 transition-all flex items-center justify-center ${
+                    isAutoFollow 
+                      ? 'bg-blue-600 border-blue-700 text-white' 
+                      : 'bg-white/95 border-slate-200/80 text-slate-500'
+                  }`}
+                  title={isAutoFollow ? 'অটো-ফলো বন্ধ করুন' : 'অটো-ফলো চালু করুন'}
+                >
+                  <Navigation size={17} className={isAutoFollow ? 'animate-pulse' : ''} />
+                </button>
               </div>
             </div>
 
@@ -2105,16 +2139,21 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
                       }
                       if (allCoords.length >= 2) {
                         const bounds = L.latLngBounds(allCoords);
-                        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 20, animate: true });
+                        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 18.5, animate: true });
                       } else if (allCoords.length === 1) {
-                        map.flyTo(allCoords[0], 19, { animate: true });
+                        map.flyTo(allCoords[0], 18, { animate: true });
                       }
                     }
 
                     showToast(`হেঁটে ট্র্যাকিং চালু! ১নং পয়েন্ট যুক্ত হয়েছে। প্রতি ${trackingSensitivity} মি হাঁটলে অটো পয়েন্ট যোগ হবে।`, 'success');
                   } else {
                     setIsGpsTracking(false);
-                    showToast('অটো ট্র্যাকিং থামানো হয়েছে। পলিগন তৈরি সম্পন্ন।', 'info');
+                    if (gpsPoints.length > 25) {
+                      setShowGpsMarkers(false);
+                      showToast('অটো ট্র্যাকিং সম্পন্ন। অধিক পয়েন্ট থাকায় পিনগুলো লুকানো হয়েছে (ম্যাপের চোখ আইকনে ক্লিক করে দেখা যাবে)।', 'info');
+                    } else {
+                      showToast('অটো ট্র্যাকিং থামানো হয়েছে। পলিগন তৈরি সম্পন্ন।', 'info');
+                    }
                   }
                 }}
                 className={`flex items-center justify-center space-x-1.5 py-2 px-2.5 rounded-lg text-xs font-bold shadow-xs active:scale-98 transition-all ${
