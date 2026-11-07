@@ -2913,6 +2913,10 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
 
             <div className="grid grid-cols-3 gap-2 text-xs">
               <div className="bg-emerald-950/40 p-1.5 rounded-lg text-center">
+                <span className="text-[10px] text-emerald-300 block">ডেসিমাল (Decimal)</span>
+                <span className="font-bold text-white text-[11.5px]">{Utils.toCleanString(totalShatak)}</span>
+              </div>
+              <div className="bg-emerald-950/40 p-1.5 rounded-lg text-center">
                 <span className="text-[10px] text-emerald-300 block">বর্গফুট (Sq.Ft)</span>
                 <span className="font-bold text-white text-[11.5px]">{Utils.toCleanString(sqFt)}</span>
               </div>
