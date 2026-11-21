@@ -91,6 +91,11 @@ export const GroupSummaryCard: React.FC<GroupSummaryCardProps> = React.memo(({
       ? groupedHisab.ymd 
       : Utils.formatDaysToYMD(groupedHisab.totalQty);
     qtyText = `বছর: ${ymdVal}`;
+  } else if (type.includes('driver')) {
+    const ymdVal = groupedHisab.ymd && groupedHisab.ymd !== '00D'
+      ? groupedHisab.ymd
+      : Utils.formatDaysToYMD(groupedHisab.totalQty);
+    qtyText = `মোট দিন: ${Math.round(groupedHisab.totalQty)} (${ymdVal})`;
   }
 
 

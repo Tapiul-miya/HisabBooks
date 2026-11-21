@@ -194,23 +194,57 @@ export namespace Utils {
     return diff;
   }
 
+  function getTimeRangeRegex(): RegExp {
+    return /([+-]?)\s*(?:[a-zA-Z0-9_]*\s*\(\s*(\d{1,2}:\d{2}\s*(?:am|pm)?)\s*(?::?\s*(?:to|till|until|stop|-)\s*:?)\s*(\d{1,2}:\d{2}\s*(?:am|pm)?)\s*\)|start\s*(\d{1,2}:\d{2}\s*(?:am|pm)?)\s*stop\s*(\d{1,2}:\d{2}\s*(?:am|pm)?))/gi;
+  }
+
+  function extractExtraMinutes(cleanInput: string, regex: RegExp): { op: string; val: number }[] {
+    const banglaDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+    const toEnDigits = (s: string) => {
+      let out = s;
+      for (let i = 0; i < 10; i++) {
+        out = out.split(banglaDigits[i]).join(String(i));
+      }
+      return out;
+    };
+
+    const withBlockTokens = cleanInput.replace(regex, (_m, op) => (op ? ` ${op} # ` : ' # '));
+    const sanitizedRemainder = toEnDigits(withBlockTokens)
+      .replace(/[\r\n]+/g, ' + ')
+      .replace(/[^0-9.+\-#\s]/g, '');
+
+    const extraNumbers: { op: string; val: number }[] = [];
+    const tokenScanRegex = /(^|[+-])\s*(#|\d+(?:\.\d+)?)/g;
+    for (const tMatch of sanitizedRemainder.matchAll(tokenScanRegex)) {
+      const op = tMatch[1] === '-' ? '-' : '+';
+      const tokenVal = tMatch[2];
+      if (tokenVal === '#') continue;
+      const num = parseFloat(tokenVal);
+      if (!isNaN(num)) {
+        extraNumbers.push({ op, val: num });
+      }
+    }
+    return extraNumbers;
+  }
+
   /**
-   * Parses multi-session start-stop string e.g. "start10:00am stop01:00pm + start02:00pm stop04:30pm"
+   * Parses multi-session time string e.g. "(10:00am to 01:00pm) + (02:00pm to 04:30pm)" or "start10:00am stop01:00pm"
    * Returns formatted details like "03H:00M+02H:30M"
    */
   export function parseStartStopDetails(input: string): string {
     if (!input) return "";
     try {
-      const regex = /([+-]?)\s*start\s*(\d{1,2}:\d{2}\s*(?:am|pm)?)\s*stop\s*(\d{1,2}:\d{2}\s*(?:am|pm)?)/gi;
-      const matches = Array.from(input.matchAll(regex));
+      const cleanInput = input.replace(/`[^`]*(`|$)/g, '');
+      const regex = getTimeRangeRegex();
+      const matches = Array.from(cleanInput.matchAll(regex));
 
       if (matches.length === 0) return "";
 
       let result = "";
       matches.forEach((match, index) => {
         const operator = match[1].trim();
-        const startRaw = match[2];
-        const stopRaw = match[3];
+        const startRaw = match[2] || match[4] || '';
+        const stopRaw = match[3] || match[5] || '';
 
         const mins = calculateSingleIntervalMinutes(startRaw, stopRaw);
         const formatted = minuteToHour(mins);
@@ -224,6 +258,11 @@ export namespace Utils {
         }
       });
 
+      const extraMinutes = extractExtraMinutes(cleanInput, regex);
+      for (const item of extraMinutes) {
+        result += ` ${item.op} ${item.val} মিনিট`;
+      }
+
       return result;
     } catch {
       return "";
@@ -231,19 +270,20 @@ export namespace Utils {
   }
 
   /**
-   * Calculates total minutes from start-stop blocks
+   * Calculates total minutes from (start to stop) or start-stop blocks and +/- minute adjustments
    */
   export function calculateMinutesFromStartStop(input: string): number {
     if (!input) return 0;
     try {
-      const regex = /([+-]?)\s*start\s*(\d{1,2}:\d{2}\s*(?:am|pm)?)\s*stop\s*(\d{1,2}:\d{2}\s*(?:am|pm)?)/gi;
-      const matches = Array.from(input.matchAll(regex));
+      const cleanInput = input.replace(/`[^`]*(`|$)/g, '');
+      const regex = getTimeRangeRegex();
+      const matches = Array.from(cleanInput.matchAll(regex));
 
       let totalMinutes = 0;
       for (const match of matches) {
         const operator = match[1].trim();
-        const startRaw = match[2];
-        const stopRaw = match[3];
+        const startRaw = match[2] || match[4] || '';
+        const stopRaw = match[3] || match[5] || '';
 
         const mins = calculateSingleIntervalMinutes(startRaw, stopRaw);
 
@@ -254,7 +294,12 @@ export namespace Utils {
         }
       }
 
-      return totalMinutes;
+      const extraMinutes = extractExtraMinutes(cleanInput, regex);
+      for (const item of extraMinutes) {
+        totalMinutes += item.op === '-' ? -item.val : item.val;
+      }
+
+      return Math.round((totalMinutes + Number.EPSILON) * 100) / 100;
     } catch {
       return 0;
     }
@@ -267,7 +312,9 @@ export namespace Utils {
   export function isDateRangeAttempt(input: string): boolean {
     if (!input || !input.trim()) return false;
     const s = input.trim();
-    return /\d{4}-\d{1,2}-\d{1,2}/.test(s) || (/\(/.test(s) && /\)/.test(s));
+    if (/\d{4}-\d{1,2}-\d{1,2}/.test(s)) return true;
+    if (/\d{1,2}:\d{2}/.test(s)) return false;
+    return /\(/.test(s) && /\)/.test(s);
   }
 
   export function hasJoinEndDateBlocks(input: string): boolean {
@@ -282,13 +329,16 @@ export namespace Utils {
     errorMessage?: string;
   }
 
-  export function processDateRangeExpression(input: string): DateRangeProcessResult {
+  export function processDateRangeExpression(input: string, isInclusive: boolean = false): DateRangeProcessResult {
     if (!input || !input.trim()) {
       return { isValid: true, totalDays: 0, unitText: "00D", detailsText: "" };
     }
 
+    // Strip backtick comments like `note 123`
+    const cleanInput = input.replace(/`[^`]*(`|$)/g, '');
+
     // 1. Check for invalid operators (* / % ^)
-    if (/[*/%^]/.test(input)) {
+    if (/[*/%^]/.test(cleanInput)) {
       return {
         isValid: false,
         totalDays: 0,
@@ -299,19 +349,22 @@ export namespace Utils {
     }
 
     const regex = getJoinEndDateRegex();
-    const matches = Array.from(input.matchAll(regex));
+    const matches = Array.from(cleanInput.matchAll(regex));
 
-    // 2. Check for leftover invalid characters
-    const remaining = input.replace(regex, '').replace(/[+\-\s]/g, '');
-    if (remaining.length > 0) {
-      return {
-        isValid: false,
-        totalDays: 0,
-        unitText: "00D",
-        detailsText: "",
-        errorMessage: "ভুল ইনপুট ফরম্যাট! ব্র্যাকেটে সঠিক তারিখ ব্যবহার করুন, যেমন: Gg(2023-05-23 to 2025-05-23) এবং শুধুমাত্র + ও - ব্যবহার করুন।"
-      };
-    }
+    // Convert Bengali digits in leftover (non-date-block) expression parts and strip arbitrary text
+    const banglaDigits = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+    const toEnDigits = (s: string) => {
+      let out = s;
+      for (let i = 0; i < 10; i++) {
+        out = out.split(banglaDigits[i]).join(String(i));
+      }
+      return out;
+    };
+
+    const withBlockTokens = cleanInput.replace(regex, (_m, op) => (op ? ` ${op} # ` : ' # '));
+    const sanitizedRemainder = toEnDigits(withBlockTokens)
+      .replace(/[\r\n]+/g, ' + ')
+      .replace(/[^0-9.+\-#\s]/g, '');
 
     if (matches.length === 0) {
       return {
@@ -326,6 +379,15 @@ export namespace Utils {
     let totalDays = 0;
     let detailsText = "";
     let hasDateError = false;
+    let singleBlockYmd = "";
+
+    const getInclusiveEndDateStr = (endDateUtc: Date): string => {
+      const next = new Date(endDateUtc.getTime() + 24 * 60 * 60 * 1000);
+      const y = next.getUTCFullYear();
+      const m = String(next.getUTCMonth() + 1).padStart(2, '0');
+      const d = String(next.getUTCDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    };
 
     matches.forEach((match, index) => {
       const operator = match[1].trim();
@@ -350,12 +412,14 @@ export namespace Utils {
       }
 
       const diffMs = d2.getTime() - d1.getTime();
-      const days = Math.round(diffMs / (1000 * 60 * 60 * 24));
+      const rawDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
 
-      if (days < 0) {
+      if (rawDays < 0) {
         hasDateError = true;
         return;
       }
+
+      const days = isInclusive ? rawDays + 1 : (rawDays === 0 ? 1 : rawDays);
 
       if (operator === '-') {
         totalDays -= days;
@@ -363,7 +427,9 @@ export namespace Utils {
         totalDays += days;
       }
 
-      const ymd = calculateYMDFromStartEnd(joinStr, endStr);
+      const ymdEndStr = isInclusive ? getInclusiveEndDateStr(d2) : endStr;
+      const ymd = calculateYMDFromStartEnd(joinStr, ymdEndStr);
+      if (index === 0) singleBlockYmd = ymd;
       const op = operator === "-" ? " - " : (index > 0 ? " + " : (operator === "+" ? "+" : ""));
       const labelPrefix = prefix ? `${prefix}: ` : "";
       detailsText += `${op}${labelPrefix}${joinStr} to ${endStr} = ${ymd} (${days} দিন)`;
@@ -379,9 +445,26 @@ export namespace Utils {
       };
     }
 
+    // 3. Parse +/- numbers outside date-range brackets (ignoring arbitrary text)
+    const extraNumbers: { op: string; val: number }[] = [];
+    const tokenScanRegex = /(^|[+-])\s*(#|\d+(?:\.\d+)?)/g;
+    for (const tMatch of sanitizedRemainder.matchAll(tokenScanRegex)) {
+      const op = tMatch[1] === '-' ? '-' : '+';
+      const tokenVal = tMatch[2];
+      if (tokenVal === '#') continue;
+      const num = parseFloat(tokenVal);
+      if (!isNaN(num)) {
+        extraNumbers.push({ op, val: num });
+        totalDays += op === '-' ? -num : num;
+        detailsText += ` ${op} ${num} দিন`;
+      }
+    }
+
+    totalDays = Math.round((totalDays + Number.EPSILON) * 100) / 100;
+
     let unitText = "";
-    if (matches.length === 1 && matches[0][1].trim() !== '-') {
-      unitText = calculateYMDFromStartEnd(matches[0][3], matches[0][4]);
+    if (matches.length === 1 && matches[0][1].trim() !== '-' && extraNumbers.length === 0) {
+      unitText = singleBlockYmd || calculateYMDFromStartEnd(matches[0][3], matches[0][4]);
     } else {
       unitText = formatDaysToYMD(totalDays);
     }
@@ -432,6 +515,10 @@ export namespace Utils {
     m = Math.max(0, m);
     d = Math.max(0, d);
 
+    if (y === 0 && m === 0 && d === 0) {
+      return "01D";
+    }
+
     return formatCompactYMDParts(y, m, d);
   }
 
@@ -464,10 +551,11 @@ export namespace Utils {
     const isBigha = hisabType === "bigha";
     const isHour = hisabType === "hour";
     const isMonth = hisabType === "monthly" || hisabType === "month";
-    const attemptingDateRange = isDateRangeAttempt(stm);
+    const isDriverHisab = hisabType === "driver hisab";
+    const attemptingDateRange = !isHour && isDateRangeAttempt(stm);
 
     if (attemptingDateRange) {
-      const dateRes = processDateRangeExpression(stm);
+      const dateRes = processDateRangeExpression(stm, isDriverHisab);
       if (!dateRes.isValid) {
         const paid = calculateFromString(paidStm);
         return {
@@ -484,7 +572,7 @@ export namespace Utils {
 
       const qty = dateRes.totalDays;
       const rate = parseFloat(String(rateInput).replace(/,/g, '')) || 0;
-      const rawAmount = (rate / 30.0) * qty;
+      const rawAmount = hisabType === 'driver hisab' ? rate * qty : (rate / 30.0) * qty;
       const amount = Math.round((rawAmount + Number.EPSILON) * 100) / 100;
       const extraBill = calculateFromString(billStm);
       const totalBill = Math.round((amount + extraBill + Number.EPSILON) * 100) / 100;
@@ -542,6 +630,8 @@ export namespace Utils {
       unitText = minuteToHour(qty);
     } else if (isMonth) {
       unitText = `${qty} মাস`;
+    } else if (isDriverHisab) {
+      unitText = formatDaysToYMD(qty);
     }
 
     // 8. Session breakdown
@@ -619,6 +709,7 @@ export namespace Utils {
     if (k.includes('contract')) return 'চুক্তি হিসাব';
     if (k.includes('fuel')) return 'ফুয়েল / জ্বালানি';
     if (k.includes('rent')) return 'ভাড়া';
+    if (k.includes('driver')) return 'ড্রাইভার/হেল্পার/ম্যানেজার/হিসাব';
     if (k.includes('other')) return 'অন্যান্য';
     return typeKey || 'সাধারণ';
   }

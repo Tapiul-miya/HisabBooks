@@ -51,6 +51,7 @@ const TYPE_OPTIONS: HisabTypeOption[] = [
   { key: 'contract', labelBn: 'চুক্তি হিসাব' },
   { key: 'fuel', labelBn: 'ফুয়েল / জ্বালানি' },
   { key: 'rent', labelBn: 'ভাড়া' },
+  { key: 'driver hisab', labelBn: 'ড্রাইভার/হেল্পার/ম্যানেজার/হিসাব' },
   { key: 'other', labelBn: 'অন্যান্য' }
 ];
 
@@ -106,6 +107,8 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
   const [trolleyBed, setTrolleyBed] = useState(initialParsedWork.trolleyBed);
   const [optional, setOptional] = useState(itemToEdit?.optional || '');
 
+  const isDriverHisab = selectedOption.key === 'driver hisab';
+
   const concatenatedWorkDetails = useMemo(() => {
     return Utils.formatWorkDetails(
       workDetails,
@@ -113,10 +116,10 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
       session,
       managerName,
       vehicleName,
-      driverName,
-      trolleyBed
+      isDriverHisab ? '' : driverName,
+      isDriverHisab ? '' : trolleyBed
     );
-  }, [workDetails, year, session, managerName, vehicleName, driverName, trolleyBed]);
+  }, [workDetails, year, session, managerName, vehicleName, driverName, trolleyBed, isDriverHisab]);
 
   const [allEntries, setAllEntries] = useState<VehicleHisab[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -587,7 +590,7 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
 
   const { qty, amount, bill, paid, due, unit, details } = calculation;
   const currentTypeKey = selectedOption.key;
-  const hasJoinEndDate = useMemo(() => Utils.hasJoinEndDateBlocks(stm), [stm]);
+  const hasJoinEndDate = useMemo(() => currentTypeKey !== 'hour' && Utils.hasJoinEndDateBlocks(stm), [stm, currentTypeKey]);
 
   // Read-only calculated values for spend, profit, cashout, credit
   const spend = useMemo(() => {
@@ -623,7 +626,7 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
       case 'bigha':
         return 'জমির তথ্য/নোট (যেমন: 10+5)';
       case 'hour':
-        return 'সময়সূচী (যেমন: start10:00am stop01:00pm)';
+        return 'সময়সূচী যেমন: (10:00am to 01:00pm)';
       case 'trip':
         return 'ট্রিপ হিসাব (যেমন: 1+2+1)';
       case 'fuel':
@@ -634,6 +637,8 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
         return 'চুক্তির বিবরণ';
       case 'rent':
         return 'ভাড়ার বিবরণ';
+      case 'driver hisab':
+        return 'দিনের বিবরণ যেমন (2025-02-23 to 2027-03-25)';
       default:
         return 'বিবরণ / নোট (STM)';
     }
@@ -654,6 +659,8 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
         return `মোট মাস: ${qty}`;
       case 'fuel':
         return `মোট পরিমাণ: ${qty}`;
+      case 'driver hisab':
+        return `মোট দিন: ${qty}`;
       default:
         return `পরিমাণ: ${qty}`;
     }
@@ -672,6 +679,8 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
         return `ট্রিপ: ${unit}`;
       case 'monthly':
         return `মাস: ${unit}`;
+      case 'driver hisab':
+        return `মেয়াদ: ${unit}`;
       default:
         return `একক: ${unit}`;
     }
@@ -693,6 +702,8 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
         return 'প্রতি ইউনিট/লিটার দর (৳)';
       case 'rent':
         return 'ভাড়ার হার (৳)';
+      case 'driver hisab':
+        return 'per day';
       default:
         return 'দর / রেট (৳)';
     }
@@ -1036,95 +1047,99 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
                 )}
               </div>
 
-              {/* ড্রাইভার নাম */}
-              <div className="space-y-1 relative" ref={driverContainerRef}>
-                <label className="text-[11px] font-semibold text-slate-600 flex items-center justify-between">
-                  <span className="flex items-center gap-1">
-                    <User size={12} className="text-[#1565C0]" />
-                    <span>ড্রাইভার নাম</span>
-                  </span>
-                  {isWorkSubFieldsFrozen && <Lock size={11} className="text-slate-400" />}
-                </label>
-                <div className="relative flex items-center">
-                  <input
-                    type="text"
-                    disabled={isWorkSubFieldsFrozen}
-                    value={driverName}
-                    onChange={(e) => {
-                      setDriverName(e.target.value);
-                      setShowDriverSuggestions(true);
-                    }}
-                    onFocus={() => setShowDriverSuggestions(true)}
-                    placeholder="যেমন: ড্রাইভারের নাম"
-                    className={`w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-[#1565C0] ${
-                      isWorkSubFieldsFrozen ? 'bg-slate-100/90 text-slate-600 cursor-not-allowed font-medium' : ''
-                    }`}
-                  />
-                </div>
-                {!isWorkSubFieldsFrozen && showDriverSuggestions && driverSuggestions.length > 0 && (
-                  <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-36 overflow-y-auto divide-y divide-slate-100">
-                    {driverSuggestions.map((item, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => {
-                          setDriverName(item);
-                          setShowDriverSuggestions(false);
+              {!isDriverHisab && (
+                <>
+                  {/* ড্রাইভার নাম */}
+                  <div className="space-y-1 relative" ref={driverContainerRef}>
+                    <label className="text-[11px] font-semibold text-slate-600 flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <User size={12} className="text-[#1565C0]" />
+                        <span>ড্রাইভার নাম</span>
+                      </span>
+                      {isWorkSubFieldsFrozen && <Lock size={11} className="text-slate-400" />}
+                    </label>
+                    <div className="relative flex items-center">
+                      <input
+                        type="text"
+                        disabled={isWorkSubFieldsFrozen}
+                        value={driverName}
+                        onChange={(e) => {
+                          setDriverName(e.target.value);
+                          setShowDriverSuggestions(true);
                         }}
-                        className="w-full text-left px-2.5 py-1.5 text-xs text-slate-700 hover:bg-blue-50 active:bg-blue-100 flex items-center justify-between transition-colors"
-                      >
-                        <span>{item}</span>
-                      </button>
-                    ))}
+                        onFocus={() => setShowDriverSuggestions(true)}
+                        placeholder="যেমন: ড্রাইভারের নাম"
+                        className={`w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-[#1565C0] ${
+                          isWorkSubFieldsFrozen ? 'bg-slate-100/90 text-slate-600 cursor-not-allowed font-medium' : ''
+                        }`}
+                      />
+                    </div>
+                    {!isWorkSubFieldsFrozen && showDriverSuggestions && driverSuggestions.length > 0 && (
+                      <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-36 overflow-y-auto divide-y divide-slate-100">
+                        {driverSuggestions.map((item, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                              setDriverName(item);
+                              setShowDriverSuggestions(false);
+                            }}
+                            className="w-full text-left px-2.5 py-1.5 text-xs text-slate-700 hover:bg-blue-50 active:bg-blue-100 flex items-center justify-between transition-colors"
+                          >
+                            <span>{item}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
 
-              {/* বেড */}
-              <div className="space-y-1 relative" ref={trolleyBedContainerRef}>
-                <label className="text-[11px] font-semibold text-slate-600 flex items-center justify-between">
-                  <span className="flex items-center gap-1">
-                    <Briefcase size={12} className="text-[#1565C0]" />
-                    <span>বেড</span>
-                  </span>
-                  {isWorkSubFieldsFrozen && <Lock size={11} className="text-slate-400" />}
-                </label>
-                <div className="relative flex items-center">
-                  <input
-                    type="text"
-                    disabled={isWorkSubFieldsFrozen}
-                    value={trolleyBed}
-                    onChange={(e) => {
-                      setTrolleyBed(e.target.value);
-                      setShowTrolleyBedSuggestions(true);
-                    }}
-                    onFocus={() => setShowTrolleyBedSuggestions(true)}
-                    placeholder="যেমন: বেড সাইজ / তথ্য"
-                    className={`w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-[#1565C0] ${
-                      isWorkSubFieldsFrozen ? 'bg-slate-100/90 text-slate-600 cursor-not-allowed font-medium' : ''
-                    }`}
-                  />
-                </div>
-                {!isWorkSubFieldsFrozen && showTrolleyBedSuggestions && trolleyBedSuggestions.length > 0 && (
-                  <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-36 overflow-y-auto divide-y divide-slate-100">
-                    {trolleyBedSuggestions.map((item, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => {
-                          setTrolleyBed(item);
-                          setShowTrolleyBedSuggestions(false);
+                  {/* বেড */}
+                  <div className="space-y-1 relative" ref={trolleyBedContainerRef}>
+                    <label className="text-[11px] font-semibold text-slate-600 flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <Briefcase size={12} className="text-[#1565C0]" />
+                        <span>বেড</span>
+                      </span>
+                      {isWorkSubFieldsFrozen && <Lock size={11} className="text-slate-400" />}
+                    </label>
+                    <div className="relative flex items-center">
+                      <input
+                        type="text"
+                        disabled={isWorkSubFieldsFrozen}
+                        value={trolleyBed}
+                        onChange={(e) => {
+                          setTrolleyBed(e.target.value);
+                          setShowTrolleyBedSuggestions(true);
                         }}
-                        className="w-full text-left px-2.5 py-1.5 text-xs text-slate-700 hover:bg-blue-50 active:bg-blue-100 flex items-center justify-between transition-colors"
-                      >
-                        <span>{item}</span>
-                      </button>
-                    ))}
+                        onFocus={() => setShowTrolleyBedSuggestions(true)}
+                        placeholder="যেমন: বেড সাইজ / তথ্য"
+                        className={`w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 focus:outline-none focus:border-[#1565C0] ${
+                          isWorkSubFieldsFrozen ? 'bg-slate-100/90 text-slate-600 cursor-not-allowed font-medium' : ''
+                        }`}
+                      />
+                    </div>
+                    {!isWorkSubFieldsFrozen && showTrolleyBedSuggestions && trolleyBedSuggestions.length > 0 && (
+                      <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-36 overflow-y-auto divide-y divide-slate-100">
+                        {trolleyBedSuggestions.map((item, idx) => (
+                          <button
+                            key={idx}
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                              setTrolleyBed(item);
+                              setShowTrolleyBedSuggestions(false);
+                            }}
+                            className="w-full text-left px-2.5 py-1.5 text-xs text-slate-700 hover:bg-blue-50 active:bg-blue-100 flex items-center justify-between transition-colors"
+                          >
+                            <span>{item}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                </>
+              )}
             </div>
 
             {/* Live Concatenated Work Details Preview Box */}
@@ -1146,7 +1161,7 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
           {/* Customer Name */}
           <div className="space-y-1 relative" ref={nameContainerRef}>
             <label className="text-xs font-medium text-slate-600 flex items-center justify-between">
-              <span>গ্রাহকের নাম</span>
+              <span>{isDriverHisab ? 'নাম' : 'গ্রাহকের নাম'}</span>
               {isNameFrozen && <Lock size={13} className="text-slate-400" />}
             </label>
             <div className="relative flex items-center">
@@ -1160,7 +1175,7 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
                   setName(e.target.value);
                   setShowSuggestions(true);
                 }}
-                placeholder="যেমন: আব্দুর রহিম"
+                placeholder={isDriverHisab ? 'নাম লিখুন' : 'যেমন: আব্দুর রহিম'}
                 className={`w-full bg-[#F8FAFC] border border-slate-300 rounded-xl pl-9 pr-3 py-2.5 text-sm text-slate-800 focus:outline-none focus:border-[#1565C0] ${
                   isNameFrozen ? 'bg-slate-100/90 text-slate-600 cursor-not-allowed font-medium' : ''
                 }`}
@@ -1445,10 +1460,10 @@ export const AddHisabScreen: React.FC<AddHisabScreenProps> = ({
               onChange={(e) => setStm(e.target.value)}
               placeholder={
                 currentTypeKey === 'hour'
-                  ? 'start10:00am stop01:00pm'
+                  ? '(10:00am to 01:00pm)'
                   : currentTypeKey === 'bigha'
                   ? '10+15'
-                  : currentTypeKey === 'monthly'
+                  : currentTypeKey === 'monthly' || currentTypeKey === 'driver hisab'
                   ? 'Gg(2023-05-23 to 2025-05-23)+Gg(...)'
                   : '1+2+1'
               }

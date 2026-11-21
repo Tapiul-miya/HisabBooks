@@ -9,7 +9,8 @@ import {
   User,
   signOut,
   initializeAuth,
-  browserLocalPersistence
+  browserLocalPersistence,
+  browserPopupRedirectResolver
 } from 'firebase/auth';
 import { Capacitor } from '@capacitor/core';
 import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
@@ -17,9 +18,16 @@ import firebaseConfig from '../../firebase-applet-config.json';
 
 // ১. ফায়ারবেস অ্যাপ ও অথ ইনিশিয়ালাইজেশন
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-export const auth = initializeAuth(app, {
-  persistence: browserLocalPersistence
-});
+export const auth = (() => {
+  try {
+    return initializeAuth(app, {
+      persistence: browserLocalPersistence,
+      popupRedirectResolver: browserPopupRedirectResolver
+    });
+  } catch {
+    return getAuth(app);
+  }
+})();
 
 // ২. নেটিভ গুগল-অথ ইনিশিয়ালাইজেশন
 let isGoogleAuthInitialized = false;
@@ -128,7 +136,7 @@ export const initAuth = (
   onAuthFailure?: () => void
 ) => {
   // ওয়েব রিডাইরেক্ট রেজাল্ট চেক
-  getRedirectResult(auth)
+  getRedirectResult(auth, browserPopupRedirectResolver)
     .then((result) => {
       if (result) {
         const credential = GoogleAuthProvider.credentialFromResult(result);
@@ -263,7 +271,7 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
 
           if (confirmWebFallback) {
             try {
-              const result = await signInWithPopup(auth, provider);
+              const result = await signInWithPopup(auth, provider, browserPopupRedirectResolver);
               const credential = GoogleAuthProvider.credentialFromResult(result);
               const token = credential?.accessToken;
               if (token) {
@@ -283,7 +291,7 @@ export const googleSignIn = async (): Promise<{ user: User; accessToken: string 
 
       // ২. ওয়েব ব্রাউজার ফ্লো
       try {
-        const result = await signInWithPopup(auth, provider);
+        const result = await signInWithPopup(auth, provider, browserPopupRedirectResolver);
         const credential = GoogleAuthProvider.credentialFromResult(result);
         const token = credential?.accessToken;
         if (!token) {

@@ -40,7 +40,9 @@ import {
   Radio,
   Download,
   Image as ImageIcon,
-  Share2
+  Share2,
+  X,
+  MoreVertical
 } from 'lucide-react';
 import { Geolocation } from '@capacitor/geolocation';
 import { Filesystem, Directory } from '@capacitor/filesystem';
@@ -284,6 +286,7 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
   const [unit, setUnit] = useState<UnitLength>('feet');
   const [bighaShatakValue, setBighaShatakValue] = useState<number>(33); // 33 shatak per bigha default
   const [showSettings, setShowSettings] = useState(false);
+  const [showModeMenu, setShowModeMenu] = useState(false);
   const [copiedText, setCopiedText] = useState(false);
   const [savedRecords, setSavedRecords] = useState<SavedLandMeasurement[]>(() => {
     try {
@@ -294,6 +297,7 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
     }
   });
   const [showSavedModal, setShowSavedModal] = useState(false);
+  const [showSavePromptModal, setShowSavePromptModal] = useState(false);
 
   // Metadata for saving/adding to hisab
   const [customerName, setCustomerName] = useState('');
@@ -1588,6 +1592,7 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
     };
 
     setSavedRecords(prev => [newRecord, ...prev]);
+    setShowSavePromptModal(false);
     showToast('পরিমাপ রেকর্ড সফলভাবে সংরক্ষিত হয়েছে!', 'success');
   };
 
@@ -1673,11 +1678,26 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
               <Compass size={18} className="text-emerald-300 animate-pulse" />
               <span>জমি বা মাঠের পরিমাপ</span>
             </h1>
+            <span className="text-[10.5px] text-emerald-200 font-medium block leading-tight pl-6">
+              {activeTab === 'gps_polygon'
+                ? 'জিপিএস পলিগন (GPS)'
+                : activeTab === 'quadrilateral'
+                ? '৪ কোণা জমি'
+                : activeTab === 'triangle'
+                ? '৩ কোণা জমি'
+                : activeTab === 'rectangle'
+                ? 'আয়তাকার / বর্গাকার'
+                : activeTab === 'circle'
+                ? 'বৃত্তাকার / পুকুর'
+                : activeTab === 'multi_plot'
+                ? 'একাধিক প্লট যোগ'
+                : 'একক রূপান্তর'}
+            </span>
           </div>
         </div>
 
         {/* Top Right Actions */}
-        <div className="flex items-center space-x-1.5">
+        <div className="flex items-center space-x-1">
           <button
             onClick={() => setShowSavedModal(true)}
             className="flex items-center space-x-1 bg-emerald-800/80 hover:bg-emerald-700/80 px-2.5 py-1 rounded-lg text-xs font-medium border border-emerald-400/30 text-emerald-100 transition-colors shadow-xs"
@@ -1687,12 +1707,78 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
             <span>রেকর্ড ({savedRecords.length})</span>
           </button>
           <button
-            onClick={() => setShowSettings(!showSettings)}
+            onClick={() => {
+              setShowModeMenu(false);
+              setShowSettings(!showSettings);
+            }}
             className={`p-1.5 rounded-lg hover:bg-white/15 transition-colors ${showSettings ? 'bg-white/20 text-white' : 'text-emerald-100'}`}
             title="পরিমাপ সেটিংস"
           >
             <Sliders size={18} />
           </button>
+
+          {/* 3-Dot Calculation Mode Menu */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowModeMenu((prev) => !prev)}
+              className={`p-1.5 rounded-lg hover:bg-white/15 transition-colors ${showModeMenu ? 'bg-white/20 text-white' : 'text-emerald-100'}`}
+              title="পরিমাপের ধরন নির্বাচন করুন"
+              aria-label="পরিমাপের ধরন মেনু"
+            >
+              <MoreVertical size={19} />
+            </button>
+
+            {showModeMenu && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setShowModeMenu(false)}
+                />
+                <div className="absolute right-0 mt-2 w-56 bg-white text-slate-800 rounded-xl shadow-xl border border-slate-200 py-1.5 z-50 animate-in fade-in zoom-in-95 duration-150">
+                  <div className="px-3 py-1.5 text-[10.5px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
+                    পরিমাপের ধরন
+                  </div>
+                  {(
+                    [
+                      { id: 'gps_polygon' as ShapeMode, label: 'জিপিএস পলিগন (GPS)', icon: <Navigation size={15} /> },
+                      { id: 'quadrilateral' as ShapeMode, label: '৪ কোণা জমি', icon: <Square size={15} /> },
+                      { id: 'triangle' as ShapeMode, label: '৩ কোণা জমি', icon: <Triangle size={15} /> },
+                      { id: 'rectangle' as ShapeMode, label: 'আয়তাকার / বর্গাকার', icon: <Square size={15} className="rotate-45" /> },
+                      { id: 'circle' as ShapeMode, label: 'বৃত্তাকার / পুকুর', icon: <Circle size={15} /> },
+                      { id: 'multi_plot' as ShapeMode, label: 'একাধিক প্লট যোগ', icon: <Layers size={15} /> },
+                      { id: 'converter' as ShapeMode, label: 'একক রূপান্তর', icon: <Calculator size={15} /> },
+                    ]
+                  ).map((item) => {
+                    const isSelected = activeTab === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => {
+                          setActiveTab(item.id);
+                          setShowModeMenu(false);
+                        }}
+                        className={`w-full px-3 py-2 text-left text-xs font-semibold flex items-center justify-between transition-colors ${
+                          isSelected
+                            ? 'bg-emerald-50 text-[#1B5E20]'
+                            : 'text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        <span className="flex items-center space-x-2.5">
+                          <span className={isSelected ? 'text-[#1B5E20]' : 'text-slate-500'}>
+                            {item.icon}
+                          </span>
+                          <span>{item.label}</span>
+                        </span>
+                        {isSelected && <Check size={14} className="text-[#1B5E20] shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </header>
 
@@ -1753,235 +1839,98 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
         </div>
       )}
 
-      {/* Horizontal Nav Tabs for Calculation Methods */}
-      <div className="bg-white border-b border-slate-200 px-2 py-1.5 flex items-center space-x-1.5 overflow-x-auto no-scrollbar shrink-0 shadow-xs">
-        <button
-          onClick={() => setActiveTab('gps_polygon')}
-          className={`flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
-            activeTab === 'gps_polygon'
-              ? 'bg-[#1B5E20] text-white shadow-xs'
-              : 'bg-emerald-50 text-emerald-800 border border-emerald-300/80 hover:bg-emerald-100'
-          }`}
-        >
-          <Navigation size={14} className={activeTab === 'gps_polygon' ? 'text-emerald-300' : 'text-emerald-700'} />
-          <span>জিপিএস পলিগন (GPS)</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('quadrilateral')}
-          className={`flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
-            activeTab === 'quadrilateral'
-              ? 'bg-[#1B5E20] text-white shadow-xs'
-              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-          }`}
-        >
-          <Square size={14} />
-          <span>৪ কোণা জমি</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('triangle')}
-          className={`flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
-            activeTab === 'triangle'
-              ? 'bg-[#1B5E20] text-white shadow-xs'
-              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-          }`}
-        >
-          <Triangle size={14} />
-          <span>৩ কোণা জমি</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('rectangle')}
-          className={`flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
-            activeTab === 'rectangle'
-              ? 'bg-[#1B5E20] text-white shadow-xs'
-              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-          }`}
-        >
-          <Square size={14} className="rotate-45" />
-          <span>আয়তাকার / বর্গাকার</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('circle')}
-          className={`flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
-            activeTab === 'circle'
-              ? 'bg-[#1B5E20] text-white shadow-xs'
-              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-          }`}
-        >
-          <Circle size={14} />
-          <span>বৃত্তাকার / পুকুর</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('multi_plot')}
-          className={`flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
-            activeTab === 'multi_plot'
-              ? 'bg-[#1B5E20] text-white shadow-xs'
-              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-          }`}
-        >
-          <Layers size={14} />
-          <span>একাধিক প্লট যোগ</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab('converter')}
-          className={`flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
-            activeTab === 'converter'
-              ? 'bg-[#1B5E20] text-white shadow-xs'
-              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-          }`}
-        >
-          <Calculator size={14} />
-          <span>একক রূপান্তর</span>
-        </button>
-      </div>
-
-      {/* Main Scrollable Content */}
-      <main className="flex-1 overflow-y-auto px-3 sm:px-4 py-3 space-y-3 pb-24">
-        {/* Customer & Plot Info */}
-        <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-xs space-y-2">
-          <div className="grid grid-cols-2 gap-2 text-xs">
-            <div>
-              <label className="text-[11px] font-semibold text-slate-600 flex items-center gap-1 mb-1">
-                <User size={12} className="text-emerald-700" />
-                <span>কৃষক / জমির মালিক</span>
-              </label>
-              <input
-                type="text"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                placeholder="মালিকের নাম লিখুন"
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:border-emerald-600 focus:outline-hidden"
-              />
+      {/* Dedicated GPS Live Status Bar (Positioned high directly under nav tabs for full map visibility) */}
+      {activeTab === 'gps_polygon' && (
+        <div className="bg-slate-900 text-white px-3 py-1.5 border-b border-slate-700/80 flex items-center justify-between gap-2 text-[11px] shrink-0 shadow-xs">
+          <div className="flex items-center space-x-2 min-w-0">
+            <div className="relative shrink-0 flex items-center justify-center w-2.5 h-2.5">
+              {isGpsOff ? (
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+              ) : isLocating || !currentGpsPos ? (
+                <RefreshCw size={11} className="animate-spin text-amber-400" />
+              ) : (
+                <>
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </>
+              )}
             </div>
-            <div>
-              <label className="text-[11px] font-semibold text-slate-600 flex items-center gap-1 mb-1">
-                <MapPin size={12} className="text-emerald-700" />
-                <span>দাগ / খতিয়ান / প্লট নং</span>
-              </label>
-              <input
-                type="text"
-                value={plotNumber}
-                onChange={(e) => setPlotNumber(e.target.value)}
-                placeholder="দাগ বা প্লট নম্বর"
-                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:border-emerald-600 focus:outline-hidden"
-              />
+            <div className="flex items-center space-x-1.5 min-w-0">
+              <span className="font-semibold text-slate-200 whitespace-nowrap">GPS স্ট্যাটাস:</span>
+              {isGpsOff ? (
+                <span className="bg-rose-500/20 text-rose-300 px-1.5 py-0.5 rounded text-[10px] font-bold border border-rose-500/30 flex items-center gap-1 whitespace-nowrap">
+                  <WifiOff size={10} className="text-rose-400" />
+                  <span>জিপিএস বন্ধ / অনুমতি দিন</span>
+                </span>
+              ) : isGpsTracking ? (
+                <span className="bg-emerald-500/25 text-emerald-200 px-1.5 py-0.5 rounded text-[10px] font-bold border border-emerald-400/40 truncate">
+                  ট্র্যাকিং চলছে — হাঁটতে থাকুন
+                </span>
+              ) : currentGpsPos ? (
+                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold truncate ${
+                  currentGpsPos.source === 'ip'
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                    : currentGpsPos.accuracy <= 20
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                    : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                }`}>
+                  {currentGpsPos.source === 'ip'
+                    ? 'GPS খোঁজা হচ্ছে — অপেক্ষা করুন'
+                    : currentGpsPos.accuracy <= 20
+                    ? 'সব রেডি — হাঁটতে পারেন'
+                    : 'সিগন্যাল স্থির হচ্ছে — অপেক্ষা করুন'}
+                </span>
+              ) : (
+                <span className="bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded text-[10px] font-bold border border-amber-500/30 whitespace-nowrap">
+                  সিগন্যাল খোঁজা হচ্ছে — অপেক্ষা করুন...
+                </span>
+              )}
             </div>
           </div>
-        </div>
 
+          {currentGpsPos && !isGpsOff && (
+            <div className="text-[10px] text-slate-300 flex items-center space-x-1.5 shrink-0">
+              <span className="font-mono text-slate-200 hidden sm:inline">
+                {currentGpsPos.lat.toFixed(5)}, {currentGpsPos.lng.toFixed(5)}
+              </span>
+              <span className="text-slate-500 hidden sm:inline">|</span>
+              <span className="text-emerald-400 font-semibold whitespace-nowrap">
+                ±{Math.round(currentGpsPos.accuracy)} মি.
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Slim Realtime Area Status Bar directly below GPS Status Bar */}
+      {activeTab === 'gps_polygon' && (
+        <div className="bg-emerald-950 text-white px-3 py-1 border-b border-emerald-800/80 flex items-center justify-between gap-2 text-[10.5px] shrink-0 overflow-x-auto no-scrollbar whitespace-nowrap shadow-xs">
+          <span className="flex items-center gap-1 shrink-0">
+            <span className="font-bold text-amber-300">{bighaBreakdown}</span>
+          </span>
+          <span className="text-emerald-700">|</span>
+          <span className="flex items-center gap-1 shrink-0">
+            <span className="text-emerald-300">শতক:</span>
+            <span className="font-bold text-white">{Utils.toCleanString(totalShatak)}</span>
+          </span>
+          <span className="text-emerald-700">|</span>
+          <span className="flex items-center gap-1 shrink-0">
+            <span className="text-emerald-300">কাঠা:</span>
+            <span className="font-bold text-white">{Utils.toCleanString(totalKatha)}</span>
+          </span>
+          <span className="text-emerald-700">|</span>
+          <span className="flex items-center gap-1 shrink-0">
+            <span className="text-emerald-300">বর্গফুট:</span>
+            <span className="font-bold text-white">{Utils.toCleanString(sqFt)}</span>
+          </span>
+        </div>
+      )}
+
+      {/* Main Scrollable Content */}
+      <main className="flex-1 overflow-y-auto px-3 sm:px-4 py-2 space-y-2.5 pb-24">
         {/* TAB 0: GPS POLYGON LAND MEASUREMENT (FEATURED) */}
         {activeTab === 'gps_polygon' && (
-          <div className="bg-white rounded-xl p-3.5 border border-slate-200/90 shadow-xs space-y-3">
-            {/* Header with GPS Status and Layer Switch */}
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
-              <div className="flex items-center space-x-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></span>
-                <div>
-                  <h2 className="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-1.5">
-                    <span>জিপিএস পলিগন সার্ভে (GPS Survey)</span>
-                  </h2>
-                </div>
-              </div>
-
-              {/* Map Layer Switch, Refresh & Fullscreen */}
-              <div className="flex flex-wrap items-center gap-1.5">
-                <div className="bg-slate-100 p-0.5 rounded-lg flex flex-wrap items-center gap-0.5 text-[11px] shadow-xs">
-                  <button
-                    onClick={() => {
-                      setMapLayerType('google_hybrid');
-                      showToast('গুগল হাইব্রিড স্যাটেলাইট চালু হয়েছে', 'info');
-                    }}
-                    className={`px-2 py-0.5 rounded-md font-semibold transition-all ${
-                      mapLayerType === 'google_hybrid' ? 'bg-[#1B5E20] text-white shadow-xs' : 'text-slate-600 hover:bg-slate-200/60'
-                    }`}
-                    title="গুগল হাইব্রিড স্যাটেলাইট ভিউ"
-                  >
-                    স্যাটেলাইট
-                  </button>
-                  <button
-                    onClick={() => {
-                      setMapLayerType('google_roadmap');
-                      showToast('গুগল নরমাল রোডম্যাপ ভিউ চালু হয়েছে', 'info');
-                    }}
-                    className={`px-2 py-0.5 rounded-md font-semibold transition-all ${
-                      mapLayerType === 'google_roadmap' ? 'bg-[#1B5E20] text-white shadow-xs' : 'text-slate-600 hover:bg-slate-200/60'
-                    }`}
-                    title="গুগল এইচডি পরিচ্ছন্ন রোডম্যাপ"
-                  >
-                    নরমাল ম্যাপ
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setMapLayerType('esri_sat');
-                      showToast('এসরি স্যাটেলাইট মোড চালু হয়েছে', 'info');
-                    }}
-                    className={`px-2 py-0.5 rounded-md font-semibold transition-all ${
-                      mapLayerType === 'esri_sat' ? 'bg-[#1B5E20] text-white shadow-xs' : 'text-slate-600 hover:bg-slate-200/60'
-                    }`}
-                    title="এসরি ওয়ার্ল্ড স্যাটেলাইট"
-                  >
-                    এসরি
-                  </button>
-                  <button
-                    onClick={() => {
-                      setMapLayerType('offline_canvas');
-                      showToast('১০০% অফলাইন গ্রিড মোড চালু হয়েছে! ইন্টারনেট ছাড়া GPS পয়েন্ট নিতে পারবেন।', 'success');
-                    }}
-                    className={`px-2 py-0.5 rounded-md font-bold flex items-center gap-1 transition-all ${
-                      mapLayerType === 'offline_canvas' ? 'bg-amber-600 text-white shadow-xs' : 'text-amber-700 hover:bg-amber-50'
-                    }`}
-                    title="১০০% অফলাইন মোড (ইন্টারনেট ছাড়া পরিমাপ)"
-                  >
-                    <WifiOff size={11} />
-                    <span>অফলাইন</span>
-                  </button>
-                </div>
-
-                {/* Live Auto Follow Walking Toggle Button */}
-                <button
-                  onClick={() => {
-                    const nextFollow = !isAutoFollow;
-                    setIsAutoFollow(nextFollow);
-                    showToast(nextFollow ? 'হেঁটে মাপার সময় ম্যাপ স্বয়ংক্রিয়ভাবে আপনাকে কেন্দ্র করবে (Auto-Follow On)' : 'ম্যানুয়াল ম্যাপ মোড চালু', 'info');
-                    if (nextFollow && currentGpsPos && mapInstanceRef.current) {
-                      mapInstanceRef.current.panTo([currentGpsPos.lat, currentGpsPos.lng], { animate: true });
-                    }
-                  }}
-                  className={`px-2 py-1 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all border ${
-                    isAutoFollow ? 'bg-blue-50 border-blue-300 text-blue-700 shadow-xs' : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100'
-                  }`}
-                  title="হেঁটে হেঁটে পরিমাপের সময় ম্যাপ আপনাকে সবসময় মাঝে বা কেন্দ্রে রাখবে"
-                >
-                  <span className={`w-2 h-2 rounded-full ${isAutoFollow ? 'bg-blue-600 animate-pulse' : 'bg-slate-400'}`}></span>
-                  <span>ফলো মি (লাইভ)</span>
-                </button>
-
-                <div className="flex items-center space-x-1">
-                  <button
-                    onClick={() => setMapReloadKey(prev => prev + 1)}
-                    className="p-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-600 transition-colors"
-                    title="ম্যাপ রিফ্রেশ করুন"
-                  >
-                    <RefreshCw size={14} />
-                  </button>
-
-                  <button
-                    onClick={() => setIsMapExpanded(!isMapExpanded)}
-                    className="p-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-600 transition-colors"
-                    title={isMapExpanded ? 'ম্যাপ ছোট করুন' : 'ম্যাপ বড় করুন'}
-                  >
-                    {isMapExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-                  </button>
-                </div>
-              </div>
-            </div>
-
+          <div className="bg-white rounded-xl p-2 sm:p-3 border border-slate-200/90 shadow-xs space-y-2">
             {/* Offline Mode Banner when offline_canvas active */}
             {mapLayerType === 'offline_canvas' && (
               <div className="bg-amber-50 border border-amber-300/80 p-2.5 rounded-xl text-xs text-amber-900 flex items-center justify-between gap-2 shadow-xs animate-in fade-in duration-200">
@@ -2007,65 +1956,6 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
                 </button>
               </div>
             )}
-
-            {/* Dedicated GPS Live Status Bar */}
-            <div className="bg-slate-900 text-white rounded-xl p-2.5 shadow-sm border border-slate-700/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-              <div className="flex items-center space-x-2.5 min-w-0">
-                <div className="relative shrink-0 flex items-center justify-center w-3 h-3">
-                  {isGpsOff ? (
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
-                  ) : isLocating || !currentGpsPos ? (
-                    <RefreshCw size={13} className="animate-spin text-amber-400" />
-                  ) : (
-                    <>
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-                    </>
-                  )}
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
-                    <span className="font-semibold text-slate-200 text-xs">GPS স্ট্যাটাস:</span>
-                    {isGpsOff ? (
-                      <span className="bg-rose-500/20 text-rose-300 px-2 py-0.5 rounded text-[10.5px] font-bold border border-rose-500/30 flex items-center gap-1">
-                        <WifiOff size={11} className="text-rose-400" />
-                        <span>জিপিএস বন্ধ / অনুমতি দিন</span>
-                      </span>
-                    ) : currentGpsPos ? (
-                      <span className={`px-2 py-0.5 rounded text-[10.5px] font-bold ${
-                        currentGpsPos.source === 'ip'
-                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                          : currentGpsPos.accuracy <= 15
-                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                          : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                      }`}>
-                        {currentGpsPos.source === 'ip'
-                          ? 'আইপি অবস্থান (GPS সংকেত খোঁজা হচ্ছে)'
-                          : currentGpsPos.accuracy <= 15
-                          ? 'সক্রিয় (উত্তম সিগন্যাল)'
-                          : 'সক্রিয় (অ্যাকুরেসি ±' + Math.round(currentGpsPos.accuracy) + ' মি)'}
-                      </span>
-                    ) : (
-                      <span className="bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded text-[10.5px] font-bold border border-amber-500/30">
-                        সিগন্যাল খোঁজা হচ্ছে...
-                      </span>
-                    )}
-                  </div>
-                  {currentGpsPos && !isGpsOff && (
-                    <div className="text-[11px] text-slate-300 flex items-center space-x-2 mt-1 flex-wrap">
-                      <span className="font-mono text-slate-200">
-                        {currentGpsPos.lat.toFixed(5)}, {currentGpsPos.lng.toFixed(5)}
-                      </span>
-                      <span className="text-slate-500">|</span>
-                      <span className="text-emerald-400 font-semibold">
-                        অ্যাকুরেসি: ±{Math.round(currentGpsPos.accuracy)} মি.
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-            </div>
 
             {/* GPS Warning if explicitly Off */}
             {isGpsOff && (
@@ -2143,16 +2033,58 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
 
               {/* Map Floating Control Buttons (Right Side) (Hidden during export) */}
               {!isExporting && (
-                <div className="absolute top-2 right-2 z-20 flex flex-col space-y-1.5">
-                  <button
-                    type="button"
-                    onClick={handleLocateMe}
-                    disabled={isLocating}
-                    className="bg-white/95 hover:bg-white text-slate-800 p-2 rounded-lg shadow-md border border-slate-200/80 active:scale-95 transition-all flex items-center justify-center disabled:opacity-60"
-                    title="আমার বর্তমান অবস্থান (Locate Me)"
-                  >
-                    <Crosshair size={17} className={`text-blue-600 ${isLocating ? 'animate-spin' : ''}`} />
-                  </button>
+                <div className="absolute top-2 right-2 z-20 flex items-start gap-1.5">
+                  <div className="bg-white/95 backdrop-blur-xs p-0.5 rounded-lg shadow-md border border-slate-200/80 flex items-center gap-0.5 text-[10.5px]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMapLayerType('google_hybrid');
+                        showToast('গুগল হাইব্রিড স্যাটেলাইট চালু হয়েছে', 'info');
+                      }}
+                      className={`px-2 py-1 rounded-md font-semibold transition-all ${
+                        mapLayerType === 'google_hybrid'
+                          ? 'bg-[#1B5E20] text-white shadow-xs'
+                          : 'text-slate-700 hover:bg-slate-100'
+                      }`}
+                      title="গুগল হাইব্রিড স্যাটেলাইট ভিউ"
+                    >
+                      স্যাটেলাইট
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMapLayerType('google_roadmap');
+                        showToast('গুগল নরমাল রোডম্যাপ ভিউ চালু হয়েছে', 'info');
+                      }}
+                      className={`px-2 py-1 rounded-md font-semibold transition-all ${
+                        mapLayerType === 'google_roadmap'
+                          ? 'bg-[#1B5E20] text-white shadow-xs'
+                          : 'text-slate-700 hover:bg-slate-100'
+                      }`}
+                      title="গুগল এইচডি পরিচ্ছন্ন রোডম্যাপ"
+                    >
+                      নরমাল ম্যাপ
+                    </button>
+                  </div>
+
+                  <div className="flex flex-col space-y-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setMapReloadKey(prev => prev + 1)}
+                      className="bg-white/95 hover:bg-white text-slate-800 p-2 rounded-lg shadow-md border border-slate-200/80 active:scale-95 transition-all flex items-center justify-center"
+                      title="ম্যাপ রিফ্রেশ করুন"
+                    >
+                      <RefreshCw size={16} className="text-slate-700" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleLocateMe}
+                      disabled={isLocating}
+                      className="bg-white/95 hover:bg-white text-slate-800 p-2 rounded-lg shadow-md border border-slate-200/80 active:scale-95 transition-all flex items-center justify-center disabled:opacity-60"
+                      title="আমার বর্তমান অবস্থান (Locate Me)"
+                    >
+                      <Crosshair size={17} className={`text-blue-600 ${isLocating ? 'animate-spin' : ''}`} />
+                    </button>
                   <button
                     type="button"
                     onClick={() => mapInstanceRef.current?.zoomIn()}
@@ -2203,6 +2135,7 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
                   >
                     <Navigation size={17} className={isAutoFollow ? 'animate-pulse' : ''} />
                   </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -2306,7 +2239,7 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
                 ) : (
                   <>
                     <Footprints size={14} className="text-emerald-300" />
-                    <span>হেঁটে অটো ট্র্যাক</span>
+                    <span>হাঁটুন</span>
                   </>
                 )}
               </button>
@@ -3003,7 +2936,9 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
           {/* Action Buttons: Save, Copy, Add to Hisab */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
             <button
-              onClick={handleSaveRecord}
+              onClick={() => {
+                if (sqFt > 0) setShowSavePromptModal(true);
+              }}
               disabled={sqFt <= 0}
               className="flex items-center justify-center space-x-1 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-50 text-white py-2 px-1.5 rounded-xl text-xs font-semibold shadow-xs transition-colors"
             >
@@ -3144,6 +3079,90 @@ export const AreaMeasurementScreen: React.FC<AreaMeasurementScreenProps> = ({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* SAVE PROMPT MODAL (Shown only when saving) */}
+      {showSavePromptModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 animate-in fade-in duration-150">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSaveRecord();
+            }}
+            className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200"
+          >
+            <div className="bg-[#1B5E20] text-white p-3.5 flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Save size={18} className="text-emerald-300" />
+                <h3 className="font-bold text-sm sm:text-base">পরিমাপ সংরক্ষণ করুন</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSavePromptModal(false)}
+                className="p-1 rounded-full hover:bg-white/20 text-white transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-3">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-2.5 text-xs text-emerald-900 flex flex-wrap items-center justify-between gap-2">
+                <span className="font-bold">
+                  {Utils.toCleanString(totalShatak)} শতক ({bighaBreakdown})
+                </span>
+                <span className="text-[11px] font-semibold text-emerald-700">
+                  {Utils.toCleanString(sqFt)} বর্গফুট
+                </span>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5 mb-1">
+                  <User size={13} className="text-emerald-700" />
+                  <span>কৃষক / জমির মালিক</span>
+                </label>
+                <input
+                  type="text"
+                  autoFocus
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  placeholder="মালিকের নাম লিখুন"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:bg-white focus:border-emerald-600 focus:outline-hidden"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5 mb-1">
+                  <MapPin size={13} className="text-emerald-700" />
+                  <span>দাগ / খতিয়ান / প্লট নং</span>
+                </label>
+                <input
+                  type="text"
+                  value={plotNumber}
+                  onChange={(e) => setPlotNumber(e.target.value)}
+                  placeholder="দাগ বা প্লট নম্বর"
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs sm:text-sm text-slate-800 placeholder-slate-400 focus:bg-white focus:border-emerald-600 focus:outline-hidden"
+                />
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowSavePromptModal(false)}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-semibold transition-colors"
+              >
+                বাতিল
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 transition-colors"
+              >
+                <Save size={14} />
+                <span>সংরক্ষণ করুন</span>
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

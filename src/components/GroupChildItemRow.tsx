@@ -38,6 +38,8 @@ export const GroupChildItemRow: React.FC<GroupChildItemRowProps> = ({
       return `ঘণ্টা: ${item.unit} × ৳${Utils.toCleanString(item.rate)} = ৳${Utils.toCleanString(item.amount)}`;
     } else if (type.includes('bigha')) {
       return `কাঠা: ${Math.round(item.qty)} বিঘা:${item.unit} × ৳${Utils.toCleanString(item.rate)} = ৳${Utils.toCleanString(item.amount)}`;
+    } else if (type.includes('driver')) {
+      return `মোট দিন: ${Math.round(item.qty)} (${item.unit || Utils.formatDaysToYMD(item.qty)}) × ৳${Utils.toCleanString(item.rate)} = ৳${Utils.toCleanString(item.amount)}`;
     } else if (type.includes('monthly') || type.includes('month') || hasJoinEnd) {
       return `বছর: ${item.unit || item.qty} × ৳${Utils.toCleanString(item.rate)} = ৳${Utils.toCleanString(item.amount)}`;
     } else {
